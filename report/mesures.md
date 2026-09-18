@@ -1158,3 +1158,150 @@ environ 1 600 fausses alertes par heure.
   fuite d'un tirage aléatoire, mais ne reproduit pas un déploiement réel, où
   l'on entraîne sur le passé pour évaluer sur le futur. Décision prise pour des
   raisons de volume (M05) ; à nommer comme limite.
+
+---
+
+## M16 — Isolation Forest sur le jeu non supervisé (2026-09-18)
+
+### Décisions de l'auteur
+
+1. **Seuil calibré par validation croisée par blocs de temps** (option 3). Une
+   réserve de 10 % de normaux ne permet pas de calibrer sous 0,1 %, alors que le
+   seuil utile s'y trouve. Si l'autoencodeur rend K entraînements trop coûteux,
+   repli sur l'option 1 (seuil tiré des scores d'entraînement) pour lui seul,
+   avec l'optimisme mesuré et documenté.
+2. **Trois budgets de faux positifs rapportés : 1 %, 0,1 %, 0,01 %**, avec
+   **0,1 % comme point de référence** (environ 80 fausses alertes par heure au
+   débit de M15). Réserve de l'auteur : 0,01 % risque de donner un rappel trop
+   bas pour que la comparaison entre modèles ait du contraste ; à revoir à la
+   lecture.
+3. **Hyperparamètres par défaut, graine fixée.** Régler sur les attaques
+   romprait le protocole non supervisé.
+
+### Implémentation
+
+- `src/models/isolation_forest.py` : 100 arbres, `max_samples` = « auto »
+  (256 lignes par arbre), graine 42, `config.toml` section `isolation_forest`.
+  Le score d'anomalie est l'opposé de `score_samples` (plus grand = plus
+  suspect) ; le paramètre `contamination` n'intervient pas.
+- **Calibration** : les 950 853 normaux du jour 2, triés par `Stime`, sont coupés
+  en **5 blocs de temps contigus** (`cv_folds = 5`, choix de l'assistant, non
+  discuté) ; chaque bloc est noté par un modèle entraîné sur les 4 autres, avec
+  un préprocesseur (sélection log1p, encodeur, scaler) **réajusté sur ces 4
+  blocs seuls**. Le seuil d'un budget b est le quantile 1 − b de ces scores hors
+  échantillon (`threshold_for_fpr`) ; une alerte est déclenchée quand le score
+  est strictement supérieur au seuil.
+- Le modèle final est entraîné sur tous les normaux (préprocesseur `unsup` de
+  `prepare.py`) et évalué sur le test.
+- `src/evaluate.py` : AUC-PR (précision moyenne), seuil par budget, matrice de
+  confusion, précision, rappel global et par famille avec intervalle de Wilson
+  et découpe avec/sans jumeau, fausses alertes par heure.
+- Contrôle de la mécanique sur des scores synthétiques (loi normale, deux
+  populations) : le taux sur la calibration reste sous le budget, le rappel
+  observé est proche du rappel théorique, des scores tous égaux ne déclenchent
+  aucune alerte. Contrôle non versionné ; `ic_rappel.py` donne toujours les
+  intervalles de M09 après le déplacement de la fonction `wilson`.
+
+### Mesures
+
+Commande (46 s, deux exécutions successives : résultats identiques) :
+
+    venv/bin/python src/models/isolation_forest.py
+
+Test : 1 008 918 normaux, 14 278 attaques, étendue 12,6 h.
+
+**AUC-PR : 0,3081** (un score aléatoire donnerait la prévalence, 1,395 %).
+
+**Taux de faux positifs visé contre observé, et rappel global** (seuil
+calibré sur les scores hors échantillon) :
+
+- Budget 1 % : seuil 0,6190 ; taux sur la calibration 0,9999 % ; **taux observé
+  sur le test 0,1152 %** [0,1087 ; 0,1220] ; 1 162 faux positifs, 92,2 fausses
+  alertes par heure en moyenne, 520 la pire heure ; **rappel 3,39 %** [3,11 ;
+  3,70]. Matrice : VP 484, FP 1 162, FN 13 794, VN 1 007 756 ; précision 29,40 %.
+- Budget 0,1 % : seuil 0,6428 ; calibration 0,0997 % ; **test 0,0162 %**
+  [0,0139 ; 0,0188] ; 163 faux positifs, 12,9 fausses alertes/h en moyenne, 98
+  la pire heure ; **rappel 0,27 %** [0,19 ; 0,37]. Matrice : VP 38, FP 163, FN
+  14 240, VN 1 008 755 ; précision 18,91 %.
+- Budget 0,01 % : seuil 0,6582 ; calibration 0,0100 % ; **test 0,0038 %**
+  [0,0027 ; 0,0052] ; 38 faux positifs, 3,0 fausses alertes/h, 26 la pire
+  heure ; **rappel 0,02 %** [0,01 ; 0,06]. Matrice : VP 3, FP 38, FN 14 275, VN
+  1 008 880 ; précision 7,32 %.
+
+**Le taux observé sur le test est inférieur au taux visé**, de 8,7 fois (1 %),
+6,2 fois (0,1 %) et 2,6 fois (0,01 %), soit l'inverse de l'attente (une dérive du
+jour 2 vers le jour 1 devait faire monter le taux). Quantiles du score
+d'anomalie (50 %, 99 %, 99,9 %, 99,99 %) :
+
+- normaux d'entraînement, hors échantillon : 0,4272 ; 0,6190 ; 0,6428 ; 0,6582 ;
+- normaux d'entraînement, dans l'échantillon : 0,4255 ; 0,6145 ; 0,6400 ; 0,6494 ;
+- normaux du test : 0,4279 ; 0,5882 ; 0,6213 ; 0,6472 ;
+- attaques du test : 0,5722 ; 0,6339 ; 0,6444 ; 0,6645.
+
+Les médianes des normaux coïncident ; c'est la queue des normaux du jour 2 qui
+est plus lourde que celle des normaux du jour 1. La cause n'a pas été
+investiguée. Conséquence : la calibration jour 2 → jour 1 est conservatrice,
+donc le seuil déployable est trop haut pour le test et coûte du rappel.
+
+**Rappel lu au même taux de faux positifs sur le test** (seuil pris sur les
+normaux du TEST : borne haute non déployable, utile pour comparer des modèles
+hors qualité de calibration) : taux 1 % → **42,92 %** [42,11 ; 43,73] ; 0,1 % →
+**2,49 %** [2,24 ; 2,75] ; 0,01 % → **0,06 %** [0,03 ; 0,11]. L'écart avec le
+rappel calibré à 1 % (42,92 % contre 3,39 %) est celui de la calibration.
+
+**Rappel par famille**, seuil calibré (n = effectif de test ; intervalles de
+Wilson dans `data/processed/results/isolation_forest.json`) :
+
+- Budget 1 % : Analysis 4,32 % ; Backdoors 5,69 % ; DoS 5,33 % ; Exploits 1,61 % ;
+  Fuzzers 6,46 % ; Generic 2,75 % ; Reconnaissance 0,34 % ; Shellcode 0,00 % ;
+  Worms 12,50 % [4,34 ; 31,00] (n = 24).
+- Budget 0,1 % (référence) : Analysis 0 % ; Backdoors 0 % ; DoS 0,12 % ;
+  Exploits 0,20 % ; Fuzzers 0,68 % ; Generic 0 % ; Reconnaissance 0 % ;
+  Shellcode 0 % ; Worms 8,33 % [2,32 ; 25,85].
+- Budget 0,01 % : Exploits 0,05 %, Fuzzers 0,03 %, toutes les autres 0 %.
+
+**Rappel par famille au même taux lu sur le test** (1 % ; 0,1 % ; 0,01 %) :
+Analysis 81,06 ; 3,32 ; 0,00 · Backdoors 84,95 ; 4,68 ; 0,00 · DoS 44,61 ;
+3,64 ; 0,00 · **Exploits 13,88 ; 1,01 ; 0,12** · Fuzzers 35,43 ; 5,71 ; 0,08 ·
+Generic 85,95 ; 0,85 ; 0,00 · **Reconnaissance 42,18 ; 0,34 ; 0,00** · Shellcode
+49,78 ; 0,00 ; 0,00 · Worms 29,17 ; 8,33 ; 0,00 (tous en %). Au taux de 1 %,
+Exploits est la famille la moins bien détectée (13,88 %), Reconnaissance a un
+rappel de 42,18 %.
+
+**Découpe avec/sans jumeau** : dans le jeu non supervisé, seules 13 lignes
+d'attaque du test ont un jumeau (12 Fuzzers, 1 Shellcode ; leur jumeau est un
+flux normal, M11) ; leur rappel est de 0 % à tous les budgets, celui des autres
+lignes est celui du rappel par famille. Reconnaissance et Exploits n'ont
+aucune ligne avec jumeau (Exploits 3 dans A, mais 0 dans unsup). La découpe est
+donc sans objet pour ce modèle ; elle servira pour A, B et C.
+
+### Diagnostic : l'option 1 (seuil tiré des scores d'entraînement du modèle)
+
+Le seuil tiré des scores du modèle final sur ses propres normaux d'entraînement
+donne : budget 1 % : seuil 0,6145 (au lieu de 0,6190), taux test 0,2676 %, rappel
+7,52 % ; 0,1 % : 0,6400, test 0,0244 %, rappel 0,44 % ; 0,01 % : 0,6494, test
+0,0086 %, rappel 0,04 %.
+
+**Optimisme mesuré** : taux hors échantillon (les scores hors échantillon de
+la calibration, jour 2, sans dérive vers le test) au seuil calculé dans
+l'échantillon, comparé au budget visé : **×1,30 à 1 %** (1,3030 %), **×1,32 à
+0,1 %** (0,1318 %), **×4,12 à 0,01 %** (0,0412 %). L'optimisme de l'option 1
+est donc modeste à 1 % et 0,1 % mais quadruple à 0,01 %. Il inclut en partie
+l'effet des blocs de temps (extrapolation dans le temps) en plus du
+surapprentissage ; les deux ne sont pas séparés. À reprendre pour
+l'autoencodeur si le repli sur l'option 1 est nécessaire.
+
+### Lecture
+
+- L'Isolation Forest est une référence faible aux budgets de déploiement : à
+  0,1 %, le rappel est de 0,27 % (calibré) ou 2,49 % (lu au taux de 0,1 % sur le
+  test) ; à 0,01 %, moins de 0,1 %. Le contraste entre budgets n'existe qu'à
+  1 %. Cela ne préjuge pas de la tenue du budget de référence à 0,1 % pour
+  l'autoencodeur et le gradient boosting ; la réserve de l'auteur sur 0,01 %
+  se confirme pour ce modèle (3 attaques détectées sur 14 278).
+- L'AUC-PR de 0,3081 (22 fois la prévalence) contraste avec ces rappels bas : la
+  précision moyenne est dominée par la partie de la courbe à très faible rappel,
+  où la précision est de 29 %, 19 % et 7 % aux trois budgets.
+- Intervalles de confiance : indépendance des lignes supposée (optimiste, M09).
+- Aucune valeur de score, de seuil ou de rappel ci-dessus n'est estimée ; toutes
+  proviennent de la commande citée.
