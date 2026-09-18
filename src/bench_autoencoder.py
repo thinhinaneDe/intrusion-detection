@@ -30,46 +30,11 @@ import joblib
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
 
+from models.autoencoder import build, row_errors, train_epoch
 from prepare import load_config
 
 ARCHS = {"petit": [32, 16, 8], "moyen": [128, 64, 16], "large": [256, 128, 32]}
-
-
-def build(d_in: int, dims: list[int]) -> nn.Sequential:
-    """Autoencodeur symétrique : d_in -> dims -> ... -> dims[-1] (goulot) -> ... -> d_in."""
-    sizes = [d_in, *dims]
-    layers: list[nn.Module] = []
-    for a, b in zip(sizes[:-1], sizes[1:]):
-        layers += [nn.Linear(a, b), nn.ReLU()]
-    rev = sizes[::-1]
-    for i, (a, b) in enumerate(zip(rev[:-1], rev[1:])):
-        layers.append(nn.Linear(a, b))
-        if i < len(rev) - 2:
-            layers.append(nn.ReLU())
-    return nn.Sequential(*layers)
-
-
-def train_epoch(model, opt, x: torch.Tensor, batch: int, gen: torch.Generator) -> float:
-    """Une epoch (ordre mélangé) ; retourne la perte MSE moyenne."""
-    perm = torch.randperm(len(x), generator=gen)
-    total = 0.0
-    for i in range(0, len(x), batch):
-        xb = x[perm[i:i + batch]]
-        loss = ((model(xb) - xb) ** 2).mean()
-        opt.zero_grad(set_to_none=True)
-        loss.backward()
-        opt.step()
-        total += loss.item() * len(xb)
-    return total / len(x)
-
-
-@torch.no_grad()
-def row_errors(model, x: torch.Tensor, chunk: int = 65536) -> np.ndarray:
-    """Erreur de reconstruction (MSE moyen sur les colonnes) de chaque ligne."""
-    return np.concatenate([((model(x[i:i + chunk]) - x[i:i + chunk]) ** 2).mean(1).numpy()
-                           for i in range(0, len(x), chunk)])
 
 
 def main() -> None:
