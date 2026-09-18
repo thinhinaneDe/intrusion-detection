@@ -1864,3 +1864,68 @@ donnerait 27 min pour 300 arbres de profondeur 6.
 Prévalence des attaques : 8,24 % dans A (85 365 sur 1 036 218), 5,01 % dans B et C
 (50 191 sur 1 001 044), 1,395 % dans le test (M10, M11).
 
+---
+
+## M23 — Modèle supervisé : grille et critère déclarés avant la recherche (2026-09-18)
+
+Ces décisions et la section `[supervised]` de `config.toml` sont committées avant
+l'écriture de `src/models/supervised.py` et avant toute recherche
+d'hyperparamètres, pour que la déclaration d'avance soit vérifiable.
+
+### Décisions de l'auteur
+
+1. **XGBoost (paquet `xgboost-cpu`) confirmé.** Argument retenu : un README qui
+   exige un `apt install` préalable ne tient pas sa promesse de reproduction (M22).
+2. **Réglage des hyperparamètres : option 2 de M22.**
+   - **Grille : profondeur maximale 6 ou 10, 100 ou 300 arbres** (4 configurations).
+   - **Critère : AUC-PR (précision moyenne) sur les blocs tenus à l'écart**,
+     cohérent avec le reste du projet. Précision de l'assistant, à valider : la
+     précision moyenne est calculée bloc par bloc (normaux et attaques du bloc,
+     scores du modèle entraîné sans lui), puis **moyennée sur les 5 blocs** ; la
+     configuration à la moyenne la plus haute est retenue ; à égalité à 4
+     décimales, la moins coûteuse (moins d'arbres, puis profondeur moindre). La
+     précision moyenne poolée sur les 5 blocs est aussi calculée, à titre
+     d'information, et ne sert pas à choisir.
+   - **Réglage sur les données de C, puis figé pour A, B et C.** Les familles
+     retirées (Exploits, Reconnaissance) n'influencent ainsi aucune décision,
+     même indirectement, et les trois conditions ne diffèrent que par leurs
+     données. Contrepartie acceptée : la configuration retenue n'est pas
+     nécessairement la meilleure pour A ou B.
+   - Tous les autres hyperparamètres gardent les défauts de la bibliothèque
+     (taux d'apprentissage, régularisation, sous-échantillonnage ; poids de classes
+     non modifié), graine 42, 4 threads.
+3. **Deux ajouts retenus au rapport commun** (mêmes budgets 1 %, 0,1 % et 0,01 %,
+   même calibration en 5 blocs de temps que M16) :
+   - **le rappel sur les attaques tenues à l'écart** : les blocs de la validation
+     croisée contiennent des attaques ; au seuil calibré, leur rappel est le
+     rappel sur les familles vues, un jour connu, à un moment non vu. Comparé au
+     rappel du test, il isole la dérive temporelle sur familles connues (intérêt
+     particulier de l'auteur) ;
+   - **un diagnostic au seuil 0,5** par défaut de la bibliothèque, pour montrer
+     où il tombe.
+4. **Rapport : A, B et C sur le même pied, avec la découpe jumeau/sans jumeau**,
+   qui sert enfin ici : 449 lignes de test de Reconnaissance (25,8 %) ont un jumeau
+   dans A (415 dans B, 1 dans C ; M11).
+
+### Précisions de mise en œuvre
+
+- **Score** : la marge (log-odds) du modèle plutôt que la probabilité, pour éviter
+  les égalités de scores près de 0 et de 1 ; la précision moyenne et le seuil par
+  budget de faux positifs n'en dépendent pas (monotone). Le seuil 0,5 du
+  diagnostic correspond à la marge 0.
+- **Seuil de déploiement** : le quantile 1 − b des scores hors échantillon des
+  seuls normaux, comme pour les modèles non supervisés ; les attaques ne servent
+  jamais à le fixer. Ce seuil ne dépend pas de la prévalence d'attaques
+  d'entraînement (8,24 % dans A, 5,01 % dans B et C, contre 1,395 % au test) ; la
+  précision au seuil, elle, dépend de la prévalence du test.
+
+### Vérification des données avant de fixer la règle d'agrégation
+
+Attaques par bloc de temps de C (5 blocs de 200 208 ou 200 209 lignes) : 8 904 ;
+11 155 ; 10 047 ; 10 207 ; 9 878 (4,45 % à 5,57 % de chaque bloc). Les 7 familles
+de C sont présentes dans chaque bloc (Worms : 31, 32, 27, 30, 27 ; Shellcode 248 à
+270 ; Analysis 308 à 549). La répartition est comparable pour A (15 932 à 18 763
+attaques par bloc, 7,69 % à 9,05 %) et B (9 357 à 11 105). La précision moyenne
+par bloc est donc bien définie et la moyenne sur les blocs est une règle
+d'agrégation raisonnable.
+

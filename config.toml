@@ -94,3 +94,29 @@ cv_folds = 5
 [autoencoder.architectures]
 moyen = [128, 64, 16]
 petit = [32, 16, 8]
+
+[supervised]
+# Décidé et committé AVANT la recherche d'hyperparamètres (M23).
+# Bibliothèque : XGBoost (paquet xgboost-cpu), choisie pour l'installation sans
+# dépendance système (M22). Tous les hyperparamètres non listés dans la grille
+# gardent les valeurs par défaut de la bibliothèque (taux d'apprentissage,
+# sous-échantillonnage, régularisation, poids de classes non modifié).
+seed = 42
+threads = 4
+# Même découpage en blocs de temps contigus que les modèles non supervisés (M16).
+cv_folds = 5
+# Les hyperparamètres sont choisis UNE FOIS, sur les données de la condition C
+# (familles retirées absentes), puis figés pour A, B et C : les familles retirées
+# n'influencent ainsi aucune décision, même indirectement, et les trois
+# conditions ne diffèrent que par leurs données.
+tuning_set = "C"
+# Critère de sélection : moyenne, sur les 5 blocs de temps tenus à l'écart, de la
+# précision moyenne (AUC-PR) calculée bloc par bloc sur ses normaux et ses
+# attaques. Configuration retenue = celle de moyenne la plus haute ; à égalité à
+# 4 décimales, la moins coûteuse (moins d'arbres, puis profondeur moindre).
+selection_criterion = "mean_fold_average_precision"
+
+# Grille : 4 configurations.
+[supervised.grid]
+max_depth = [6, 10]
+n_estimators = [100, 300]
