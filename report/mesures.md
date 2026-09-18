@@ -235,3 +235,170 @@ Source : `data/raw/ReadMe.pdf`, lu en entier.
   tranche pas la question Backdoor/Backdoors.
 - Le jeu est distribué en pcap, Bro, Argus et CSV ; les 4 CSV sont ceux « for
   classification purposes ».
+
+---
+
+## M05 — Décisions de protocole (2026-09-18)
+
+Décisions prises par l'auteur du projet, sur la base de M01 à M03. Ce ne sont
+pas des mesures ; elles sont consignées pour tracer ce qui a été décidé avant
+d'écrire `prepare.py`.
+
+1. **Backdoor et Backdoors sont fusionnés** en `Backdoors`. Justification :
+   preuve interne (M02) : les deux orthographes correspondent aux deux lots
+   d'étiquetage (un par jour) et ne coexistent jamais ; la page officielle du
+   projet et le fichier features annoncent neuf catégories. L'article MilCIS
+   n'a pas été lu (voir M03) ; la décision ne s'appuie pas dessus. Cette entrée
+   remplace le « à confirmer » de M03. Les libellés sont aussi normalisés par
+   `strip()` (M01).
+2. **Découpage temporel.** Entraînement : jour 2 (18-02, `Stime` ≥ 2015-02-18
+   00:00 UTC). Test : jour 1 (22-01 + 23-01). Justification : le jour 1 n'a que
+   22 215 attaques (M02), insuffisant pour entraîner. Conséquence à garder en
+   tête : le jour 1 étant petit en attaques, certaines familles y ont peu
+   d'exemples (Worms : 24, Shellcode : 223, Backdoors : 534, Analysis : 526,
+   d'après M02, doublons de jonction inclus). Les effectifs de test définitifs
+   sortiront de `prepare.py` et seront consignés à ce moment-là.
+3. **Deux conditions sur la même partition**, pour ne pas confondre deux effets :
+   - *témoin* : le supervisé s'entraîne sur toutes les familles du jour 2 ;
+     ses résultats mesurent la dérive temporelle seule ;
+   - *traitement* : une ou plusieurs familles sont retirées de
+     l'entraînement supervisé ; l'écart avec le témoin isole l'effet « famille
+     inédite ».
+   Le choix des familles retirées reste à faire et à justifier (règle du
+   projet : pas de tirage au hasard).
+4. **Doublons** : décision différée jusqu'aux mesures de M06.
+
+---
+
+## M06 — Doublons exacts et contradictions d'étiquetage (2026-09-18)
+
+Commande (24 s) :
+
+    python3 src/inspect_duplicates.py
+
+Le script écarte d'abord les 3 doublons de jonction (il vérifie qu'ils sont
+identiques à la dernière ligne du fichier précédent), soit 2 540 044 lignes
+lues. Les étiquettes sont comparées après `strip()`, minuscules et fusion
+Backdoor → Backdoors. Les lignes et features sont comparées par empreinte
+blake2b de 8 octets (risque de collision négligeable à cette taille, non
+vérifié ligne à ligne).
+
+### A. Vrais doublons (identiques sur les 49 colonnes)
+
+- Lignes distinctes : 2 059 414.
+- **Lignes en surplus : 480 630**, soit ce qu'on retire en gardant un seul
+  exemplaire de chaque (2 540 044 − 2 059 414).
+- Lignes distinctes présentes plusieurs fois : 88 207.
+- Lignes distinctes présentes à la fois au jour 1 et au jour 2 : 0. Ce zéro est
+  garanti par construction : `Stime` fait partie des 49 colonnes et diffère
+  d'un jour à l'autre. **Il ne dit rien sur les doublons entre jours une fois
+  les identifiants et horodatages écartés**, qui n'ont pas été mesurés.
+
+### B. Contradictions d'étiquetage (features identiques, étiquettes différentes)
+
+Sur les 47 features seules (colonnes 1 à 47, sans `attack_cat` ni `Label`) :
+
+- Combinaisons de features distinctes : 2 048 616.
+- Combinaisons présentes plusieurs fois : 84 948.
+- **Combinaisons à étiquettes contradictoires : 2 251, couvrant 40 322 lignes.**
+- Dont normal contre attaque : **0**. Dont famille d'attaque contre autre
+  famille : 2 251 (40 322 lignes). Le `Label` binaire n'est donc jamais
+  contradictoire ; seule l'attribution de la famille l'est.
+- Combinaisons typiques : Exploits/Generic (80), DoS/Exploits (71),
+  Exploits/Reconnaissance (56), Exploits/Fuzzers (36). Les plus nombreuses
+  (1 234) mélangent 7 familles à la fois (Analysis, Backdoors, DoS, Exploits,
+  Fuzzers, Generic, Reconnaissance) : ce sont des flux identiques que
+  l'étiquetage a attribués à des familles différentes.
+
+Variante ajoutée, hors demande, parce que `Stime` et `Ltime` empêchent deux
+flux d'être « identiques » dès qu'ils diffèrent d'une seconde. Sans ces deux
+colonnes (45 colonnes) : 2 036 323 combinaisons distinctes, 74 895 présentes
+plusieurs fois, **2 177 contradictoires couvrant 40 322 lignes** (le même
+nombre de lignes que sur 47 colonnes), toutes famille contre famille, aucune
+normal contre attaque. Ce n'est pas un choix de features de modélisation : ces
+colonnes sont simplement retirées pour voir si les horodatages masquaient des
+contradictions.
+
+### Lecture
+
+Les deux phénomènes sont de nature différente. Les 480 630 lignes en surplus
+sont de la redondance : elles biaisent l'évaluation si des copies se retrouvent
+des deux côtés du découpage, mais ne contredisent rien. Les 40 322 lignes
+contradictoires posent un problème d'étiquetage : un classifieur parfait ne peut
+pas toutes les prédire correctes, ce qui plafonne les scores par famille sur ces
+lignes. Sur les 47 features, la contradiction ne touche que l'attribution de la
+famille, jamais normal contre attaque ; **cette dernière conclusion est
+invalidée par M07** dès qu'on retire les identifiants (IP, ports).
+
+---
+
+## M07 — Contradictions sur les features comportementales (2026-09-18)
+
+Remarque de l'auteur : les colonnes 1-47 contiennent srcip, dstip, sport,
+dsport, Stime et Ltime, qui rendent deux flux « identiques » improbables. B ne
+mesure donc pas la question posée. C l'exclut.
+
+Le script `src/inspect_duplicates.py` a été étendu (sortie additive : A, B et
+la variante 45 colonnes de M06 sont reproduits à l'identique, 480 630 surplus,
+2 251 et 2 177 combinaisons contradictoires). Commande (46 s) :
+
+    python3 src/inspect_duplicates.py
+
+### Colonnes exclues pour C (numéros 1-indexés du fichier features)
+
+Exclues : 1 srcip, 2 sport, 3 dstip, 4 dsport, 29 Stime, 30 Ltime. Restent 41
+colonnes : proto, state, dur, sbytes, dbytes, sttl, dttl, sloss, dloss,
+service, Sload, Dload, Spkts, Dpkts, swin, dwin, stcpb, dtcpb, smeansz,
+dmeansz, trans_depth, res_bdy_len, Sjit, Djit, Sintpkt, Dintpkt, tcprtt,
+synack, ackdat, is_sm_ips_ports, ct_state_ttl, ct_flw_http_mthd, is_ftp_login,
+ct_ftp_cmd, ct_srv_src, ct_srv_dst, ct_dst_ltm, ct_src_ltm, ct_src_dport_ltm,
+ct_dst_sport_ltm, ct_dst_src_ltm.
+
+Variante C' (à valider) : C sans 21 stcpb ni 22 dtcpb, les numéros de séquence
+TCP initiaux, tirés au hasard à chaque connexion. 39 colonnes.
+
+Deux réserves de définition, non tranchées par les mesures : les colonnes
+`ct_*` sont des compteurs de contexte (connexions récentes) et non des
+propriétés du flux seul ; elles sont conservées dans C et C'. Et l'identité est
+testée à l'égalité exacte des valeurs, y compris flottantes à plusieurs
+décimales : c'est une définition stricte, donc le nombre de contradictions
+trouvé est un minimum par rapport à une égalité « à peu près ».
+
+### Résultats (2 540 044 lignes, doublons de jonction écartés)
+
+C (41 colonnes) :
+
+- combinaisons distinctes : 2 016 862 ; présentes plusieurs fois : 76 218 ;
+- **combinaisons à étiquettes contradictoires : 2 579, couvrant 42 282 lignes** ;
+- **dont normal contre attaque : 453 combinaisons, 1 879 lignes** ;
+- dont famille contre famille : 2 126 combinaisons, 40 403 lignes.
+
+Sur normal contre attaque, la paire (normal, Fuzzers) représente 449 des 453
+combinaisons ; les 4 autres opposent normal à une autre famille (non détaillé
+dans la sortie).
+
+C' (39 colonnes) : 2 016 850 combinaisons distinctes ; contradictions
+**identiques à C** (2 579 combinaisons, 42 282 lignes, 453 normal contre
+attaque pour 1 879 lignes). Retirer stcpb et dtcpb ne change rien aux
+contradictions : ils n'étaient pas discriminants ici.
+
+Comparaison B → C : les contradictions famille contre famille sont du même
+ordre (40 322 lignes contre 40 403). **Ce qui apparaît avec C, c'est le normal
+contre attaque : 0 sur B, 453 combinaisons sur C.** Le B nul sur ce point venait
+bien des identifiants, comme le supposait l'auteur ; en revanche B n'était pas
+nul en général (2 251) parce que des flux de la même seconde, avec les mêmes
+IP et ports, existent.
+
+### Doublons entre les deux jours
+
+Pour A, B, B', C et C' : **0 combinaison présente aux deux jours**, donc aucune
+copie comportementale identique entre entraînement (jour 2) et test (jour 1)
+selon cette définition stricte. Contrôle de plausibilité du mécanisme, sur des
+sous-ensembles de colonnes plus étroits (script jetable, non versionné, dans le
+répertoire temporaire de la session, non reproductible depuis le dépôt) :
+jour 1 = 1 087 202 lignes, jour 2 = 1 452 842 ; sur proto+state+service :
+174 groupes sur 184 communs aux deux jours ; sur 10 colonnes (proto, state,
+service, sttl, dttl, sbytes, dbytes, Spkts, Dpkts, dur) : 63 292 groupes
+communs, dont 382 258 lignes du jour 1. Le détecteur inter-jours fonctionne
+donc. Quelle colonne, parmi les 41, fait tomber les recoupements à zéro n'a pas
+été cherché.
