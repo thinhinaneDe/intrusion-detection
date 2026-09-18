@@ -73,3 +73,24 @@ n_jobs = -1
 # Nombre de blocs de temps contigus pour les scores hors échantillon qui
 # calibrent le seuil (option 3 de M16) ; chaque modèle voit (k-1)/k des normaux.
 cv_folds = 5
+
+[autoencoder]
+# Décidé et committé AVANT tout résultat de l'autoencodeur (M19). Deux
+# architectures déclarées d'avance et rapportées sur le même pied : aucun choix
+# entre elles après lecture des résultats. Perte MSE sans écrêtage, nombre
+# d'epochs fixe (pas d'arrêt précoce), identique pour les blocs de calibration
+# et le modèle final.
+epochs = 30
+batch_size = 1024
+learning_rate = 0.001
+seed = 42
+# 4 threads : 8 sont 4 à 6 fois plus lents sur ces petits réseaux (M18).
+threads = 4
+# Même calibration que l'Isolation Forest : blocs de temps contigus (M16).
+cv_folds = 5
+
+# Tailles des couches cachées, la dernière est le goulot. « moyen » est
+# l'architecture principale ; « petit » est déclaré d'avance et rapporté à égalité.
+[autoencoder.architectures]
+moyen = [128, 64, 16]
+petit = [32, 16, 8]

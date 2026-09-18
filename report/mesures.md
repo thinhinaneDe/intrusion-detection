@@ -1505,3 +1505,54 @@ dimensions. Ce que cela ne dit pas : si un meilleur ajustement aux normaux
 améliore la détection d'attaques (un autoencodeur trop fidèle reconstruit aussi
 les attaques). Cela ne peut se lire que sur le test, donc ne peut pas servir à
 choisir l'architecture sans rompre le protocole non supervisé.
+
+---
+
+## M19 — Autoencodeur : décisions déclarées avant tout résultat (2026-09-18)
+
+Ces décisions et le fichier `config.toml` sont committés avant l'écriture et
+l'exécution de `src/models/autoencoder.py`, pour que la déclaration d'avance soit
+vérifiable dans l'historique.
+
+### Décisions de l'auteur
+
+1. **Architecture principale : « moyen » [128, 64, 16]** (33 224 paramètres).
+2. **« Petit » [32, 16, 8] (5 024 paramètres) déclaré d'avance, rapporté sur le
+   même pied que le moyen**, pas comme un simple test de sensibilité. Raison :
+   d'après M18, le moyen reconstruit les normaux tenus à l'écart à 0,0009 (erreur
+   moyenne, epochs 30 à 40) et le petit à 0,0372 (epoch 15), soit environ 41 fois
+   moins bien. Un autoencodeur qui reconstruit les normaux presque parfaitement
+   peut aussi reconstruire les attaques. **Si le petit détecte mieux que le moyen
+   malgré une reconstruction 41 fois moins bonne, c'est un résultat central du
+   projet**, pas une note de bas de page ; à l'inverse, si le moyen détecte mieux,
+   cela se rapporte de la même façon. Aucun choix entre les deux après la lecture
+   des résultats : les deux figurent, avec les mêmes mesures.
+3. **Budget d'entraînement : 30 epochs fixes**, identiques pour les 5 blocs de
+   calibration et le modèle final, sans arrêt précoce.
+4. **Perte : erreur quadratique moyenne, sans écrêtage** des valeurs
+   standardisées (les queues résiduelles de `ackdat`, `tcprtt`, `synack`, avec
+   des |z| jusqu'à 79, sont laissées telles quelles et le risque est mesuré, pas
+   masqué).
+5. **4 threads fixés dans `config.toml`** (M18 : 8 threads sont 4 à 6 fois plus
+   lents).
+6. Le reste comme pour l'Isolation Forest (M16) : calibration en 5 blocs de temps
+   contigus avec préprocesseur réajusté par bloc, budgets de faux positifs 1 %,
+   0,1 % (référence) et 0,01 %, même rapport (AUC-PR, rappel aux trois budgets,
+   taux visé contre observé, rappel par famille avec découpe jumeau/sans jumeau,
+   rappel au taux lu sur le test). Autres réglages : lot 1 024, Adam, taux
+   d'apprentissage 10⁻³, graine 42, ACP non utilisée pour le score.
+
+### À reprendre dans le README (limites, labellisation contestée)
+
+Les flux d'état INT ou REQ en séries denses (médiane de `ct_dst_src_ltm` de 22
+pour les INT du jour 2, contre 2 au jour 1 ; 2,689 % des normaux du jour 2 sont
+INT contre 0,533 % au jour 1 ; 17 985 flux udp/INT/dns au jour 2 contre 2 564 au
+jour 1 ; M17) sont étiquetés **normaux** au jour 2. **Hypothèse de l'auteur, non
+vérifiée et non affirmée** : ce profil ressemble à un balayage (nombreuses
+connexions courtes sans réponse). À signaler tel quel, avec la labellisation
+contestée du jeu (M04 et limites connues). Ce qui est mesuré : la densité de ces
+flux et leur part dans la queue des scores (M17) ; ce qui ne l'est pas : leur
+nature réelle. Une vérification serait possible avec `srcip`, `dstip` et
+`dsport`, exclus des features mais présents dans `data/raw` (par exemple le
+nombre de destinations et de ports distincts par source dans ces séries) ; elle
+n'a pas été faite.
