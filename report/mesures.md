@@ -1798,3 +1798,69 @@ Section limites : la calibration d'un seuil sur un jour ne se transfère pas à
 un autre jour ; le budget de faux positifs visé est une cible, pas une garantie ;
 c'est le taux observé qui décide du déploiement. Rapporter les trois rapports
 (0,95 ; 2,46 ; 12,0), présentés comme trois observations et non comme une loi.
+
+---
+
+## M22 — Coût d'un gradient boosting sur cette machine (2026-09-18)
+
+Question : chiffrer les 18 entraînements du protocole supervisé (3 conditions ×
+(5 blocs de calibration + 1 modèle final)) avant de choisir la méthode de
+calibration. Aucune métrique de détection n'est évaluée, aucun hyperparamètre
+n'est choisi.
+
+### Choix de la bibliothèque
+
+**XGBoost (paquet `xgboost-cpu` 3.4.1)**, pas LightGBM. LightGBM 4.7.0 s'installe
+mais ne se charge pas (`libgomp.so.1: cannot open shared object file`) : il
+exige la bibliothèque système OpenMP, absente de cette machine et à installer par
+`apt`, ce qui contredit la règle « le dépôt tourne sur une machine vierge en
+suivant uniquement le README ». `xgboost-cpu` embarque sa propre `libgomp` (24 Mo
+dans le venv ; le paquet `xgboost` complet fait plus de 300 Mo). Les deux
+bibliothèques sont autorisées par le cahier des charges ; le choix est motivé par
+l'installation, non par la performance. LightGBM a été désinstallé.
+
+### Temps mesurés
+
+Commandes (jeu A : 1 036 218 lignes × 58 colonnes, 85 365 attaques, 8,24 % ;
+`tree_method = hist`, taux d'apprentissage par défaut, graine 42) :
+
+    venv/bin/python src/bench_supervised.py --threads 4
+    venv/bin/python src/bench_supervised.py --threads 8 --depths 6 --trees 300
+
+Entraînement (4 threads ; première puis seconde exécution, à quelques minutes
+d'écart, stables à 5 % près) :
+
+- 100 arbres, profondeur 6 : 14,0 s et 15,0 s ;
+- 300 arbres, profondeur 6 : 35,8 s et 35,7 s ;
+- 100 arbres, profondeur 10 : 17,8 s et 18,7 s ;
+- 300 arbres, profondeur 10 : 49,3 s et 49,9 s ;
+- notation de 1 023 196 lignes : 0,8 à 4,1 s selon la taille du modèle ;
+- **8 threads, 300 arbres, profondeur 6 : 45,1 s**, contre 35,7 s à 4 threads (plus
+  lent, comme en M18 pour l'autoencodeur) ;
+- pic de mémoire : environ 2,9 Go.
+
+### Coût du protocole (arithmétique sur ces temps, pas une exécution complète)
+
+Par condition : 5 blocs à 80 % des lignes plus un modèle final à 100 % = 5,0
+entraînements pleins ; 15 pour les trois conditions (B et C ont 3 % de lignes de
+moins que A, négligé). Avec 4 threads :
+
+- 100 arbres, profondeur 6 : 15 × 14,0 s = 210 s (3,5 min) ;
+- 300 arbres, profondeur 6 : 15 × 35,8 s = 537 s (9,0 min) ;
+- 300 arbres, profondeur 10 : 15 × 49,3 s = 740 s (12,3 min) ;
+- plus environ 2 min de surcoût fixe (préprocesseur réajusté par bloc, notation).
+
+Une recherche d'hyperparamètres sur 4 configurations (profondeur 6 ou 10, 100 ou
+300 arbres) par validation croisée en 5 blocs coûterait (14,0 + 35,8 + 17,8 +
+49,3) × 5 × 0,8 = 468 s (7,8 min) sur les données d'une condition.
+
+**Le protocole tient largement dans le budget de 30 minutes.** Réserve : le temps
+par epoch de l'autoencodeur a varié d'un facteur 3 selon le moment (M18, M20) ;
+ces temps-ci sont stables sur deux exécutions rapprochées, mais un facteur 3
+donnerait 27 min pour 300 arbres de profondeur 6.
+
+### Contexte pour la calibration supervisée
+
+Prévalence des attaques : 8,24 % dans A (85 365 sur 1 036 218), 5,01 % dans B et C
+(50 191 sur 1 001 044), 1,395 % dans le test (M10, M11).
+

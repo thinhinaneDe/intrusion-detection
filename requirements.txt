@@ -1,5 +1,4 @@
-# Versions figées (pip freeze du venv, Python 3.12.13). XGBoost ou LightGBM seront
-# ajoutés avec le modèle supervisé, pour ne pas installer un paquet sans usage.
+# Versions figées (pip freeze du venv, Python 3.12.13).
 #
 # pyarrow : hors de la stack de base, ajouté pour lire et écrire le parquet
 # (types conservés, fichiers de 70-80 Mo au lieu de plusieurs centaines en CSV).
@@ -7,6 +6,10 @@
 # télécharge la version CUDA, plusieurs Go inutiles. Les paquets filelock,
 # fsspec, Jinja2, MarkupSafe, mpmath, networkx, setuptools, sympy et
 # typing_extensions sont ses dépendances.
+# xgboost-cpu : gradient boosting du modèle supervisé. LightGBM exigerait la
+# bibliothèque système libgomp (apt), incompatible avec « machine vierge, README
+# seul » ; xgboost-cpu embarque sa propre copie d'OpenMP (24 Mo, contre plus de
+# 300 Mo pour le paquet xgboost complet).
 --extra-index-url https://download.pytorch.org/whl/cpu
 cloudpickle==3.1.2
 filelock==3.32.3
@@ -29,3 +32,4 @@ sympy==1.14.0
 threadpoolctl==3.7.0
 torch==2.14.0+cpu
 typing_extensions==4.16.0
+xgboost-cpu==3.4.1
