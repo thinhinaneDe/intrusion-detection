@@ -2187,3 +2187,164 @@ rappels par famille.** Le rééchantillonnage par blocs de temps est nécessaire
   jumeau dans B ou dans C, pour que la contamination (M11, M24) ne joue pas.
 - Appliqué aux **deux versions**, avec et sans TTL.
 
+---
+
+## M26 — Ablation TTL : résultats avec et sans TTL, et intervalles apparié par blocs (2026-09-18)
+
+Décisions et colonnes déclarées avant tout résultat (M25, `d5af93f`). Commandes :
+
+    venv/bin/python src/prepare.py --config config_sans_ttl.toml
+    venv/bin/python src/verify_prepare.py --config config_sans_ttl.toml
+    venv/bin/python src/models/isolation_forest.py --config config_sans_ttl.toml
+    venv/bin/python src/models/supervised.py --config config_sans_ttl.toml --skip-tuning
+    venv/bin/python src/models/autoencoder.py --config config_sans_ttl.toml
+    venv/bin/python src/paired_bootstrap.py --config config.toml
+    venv/bin/python src/paired_bootstrap.py --config config_sans_ttl.toml
+    venv/bin/python src/compare_ablation.py
+
+Durées : préparation et contrôles, Isolation Forest, supervisé (3 × 82 à 91 s),
+autoencodeurs (moyen 751 s, petit 329 s) : 26 min de bout en bout ; rééchantillonnage
+en parallèle. Contrôles d'intégrité sans TTL : mêmes doublons supprimés (416 624 et 64 006),
+mêmes effectifs par jeu et par famille, 29 colonnes log1p (au lieu de 32) et listes
+identiques dans les quatre jeux, scaler ajusté sur l'entraînement seul (écart nul), B et C
+inclus dans A, dimensions de X 53 (unsup), 55 (A), 54 (B et C). Jumeaux (38 colonnes) :
+unsup 1 020, A 1 561, B 1 509, C 1 110 lignes de test (M11, avec TTL : 1 017, 1 555, 1 503,
+1 104) ; Reconnaissance 449, 415 et 1 dans A, B, C, inchangé.
+
+### AUC-PR au test (avec TTL / sans TTL) ; prévalence 1,395 %
+
+- Isolation Forest **0,3081 / 0,1176** ; autoencodeur moyen 0,1213 / 0,0909 ; petit
+  0,1144 / 0,0608.
+- Supervisé A 0,9757 / 0,9484 ; B 0,9696 / 0,9495 ; C 0,9744 / 0,9440.
+
+### Par budget (avec / sans, en %) : taux de faux positifs observé ; rappel calibré ; rappel lu au même taux
+
+Budget 1 % :
+- Isolation Forest : 0,1152 / 0,4117 ; 3,39 / 0,39 ; **42,92 / 2,88**.
+- AE moyen : 6,9733 / 5,4359 ; 58,19 / 46,52 ; 6,11 / 5,13. AE petit : 2,4589 / 3,1411 ;
+  22,80 / 15,41 ; 6,23 / 4,97.
+- Supervisé A : 0,1804 / 0,3248 ; 90,96 / 92,21 ; 100,00 / 99,95. B : 0,2281 / 0,3232 ;
+  91,51 / 91,70 ; 100,00 / 99,94. C : 0,1493 / 0,2277 ; 91,62 / 90,17 ; 100,00 / 99,85.
+
+Budget 0,1 % (référence) :
+- Isolation Forest : 0,0162 / 0,1321 ; 0,27 / 0,03 ; **2,49 / 0,01**.
+- AE moyen : 1,8965 / 1,6290 ; 11,19 / 9,11 ; 0,64 / 0,28. AE petit : 0,3903 / 0,7108 ;
+  2,72 / 3,63 ; 1,41 / 1,29.
+- Supervisé A : 0,0087 / 0,0824 ; 73,33 / 73,97 ; **85,56 / 75,83**. B : 0,0193 / 0,0651 ;
+  74,02 / 72,35 ; **82,48 / 75,59**. C : 0,0096 / 0,0578 ; 64,18 / 61,54 ; **86,29 / 73,69**.
+
+Budget 0,01 % :
+- Isolation Forest : 0,0038 / 0,0714 ; 0,02 / 0,00 ; 0,06 / 0,00.
+- AE moyen : 0,1940 / 0,2172 ; 1,53 / 0,85 ; 0,00 / 0,00. AE petit : 0,0036 / 0,0001 ;
+  0,06 / 0,01 ; 0,27 / 0,27.
+- Supervisé A : 0,0006 / 0,0048 ; 49,38 / 44,71 ; **73,74 / 56,42**. B : 0,0007 / 0,0023 ;
+  46,02 / 45,31 ; **71,27 / 60,39**. C : 0,0006 / 0,0076 ; 44,52 / 39,85 ; **64,52 / 41,78**.
+
+Sans TTL l'Isolation Forest passe **au-dessus** du taux visé aux budgets stricts (0,1321 %
+pour 0,1 %, 0,0714 % pour 0,01 %) alors qu'elle était au-dessous avec TTL.
+
+### Rappel lu au même taux, par famille (1 % ; 0,1 % ; 0,01 % ; avec / sans TTL, en %)
+
+Exploits : IF 13,88 / 2,25 ; 1,01 / 0,02 ; 0,12 / 0,00 · AE moyen 13,63 / 11,95 ; 1,16 /
+0,40 ; 0,00 / 0,00 · AE petit 12,96 / 11,18 ; 2,13 / 2,60 ; 0,45 / 0,49 · sup. A 100,00 /
+99,85 ; 97,40 / 91,86 ; 91,37 / 70,73 · B 100,00 / 99,80 ; 96,68 / 91,91 ; 89,16 / 77,61 ·
+C 100,00 / 99,68 ; 94,83 / 87,95 ; 83,57 / 49,33.
+
+Reconnaissance : IF 42,18 / 0,46 ; 0,34 / 0,00 ; 0,00 / 0,00 · AE moyen 0,80 / 0,69 ; 0,11 /
+0,29 ; 0,00 · AE petit 0,75 / 0,34 ; 0,34 / 0,00 ; 0,00 · sup. A 100,00 / 99,94 ; 98,91 / 96,61 ;
+96,55 / 73,45 · B 100,00 / 100,00 ; 98,68 / 97,24 ; 95,80 / 79,83 · C 100,00 / 99,89 ; 89,94 /
+**62,47** ; 42,18 / **3,91**.
+
+Toutes les familles, budget 0,1 %, lu au même taux (avec / sans ; colonnes : IF, AE moyen, AE
+petit, sup. A, B, C) : Analysis 3,3/0,0 · 0,0/0,3 · 0,7/0,0 · 88,0/80,7 · 92,4/81,1 · 82,7/81,1 ;
+Backdoors 4,7/0,0 · 1,0/0,3 · 3,3/0,0 · 99,0/96,7 · 98,7/96,7 · 98,3/97,0 ; DoS 3,6/0,0 · 2,3/0,6 ·
+5,6/3,3 · 96,5/89,0 · 95,4/89,9 · 95,8/88,8 ; Exploits 1,0/0,0 · 1,2/0,4 · 2,1/2,6 · 97,4/91,9 ·
+96,7/91,9 · 94,8/88,0 ; **Fuzzers 5,7/0,0 · 0,0/0,2 · 0,8/0,1 · 53,5/29,8 · 43,9/28,5 · 63,6/40,2** ;
+Generic 0,8/0,0 · 0,7/0,1 · 0,7/1,6 · 99,8/98,1 · 99,4/98,4 · 99,6/98,8 ; Reconnaissance 0,3/0,0 ·
+0,1/0,3 · 0,3/0,0 · 98,9/96,6 · 98,7/97,2 · 89,9/62,5 ; Shellcode 0,0/0,0 · 0,0/0,0 · 0,0/0,0 ·
+96,0/78,9 · 89,7/74,0 · 92,4/84,3 ; Worms 8,3/0,0 · 8,3/0,0 · 4,2/8,3 · 100,0/95,8 · 100,0/91,7 ·
+100,0/95,8.
+
+### Importance des variables du modèle supervisé sans TTL (gain)
+
+A : Dload 33,9 %, ackdat 13,9 %, state CON 12,1 %. B : ackdat 22,9 %, dmeansz 22,5 %, smeansz
+7,3 %. C : dmeansz 32,0 %, ackdat 13,4 %, state INT 9,2 %. Avec TTL (M24) : ct_state_ttl 52 à
+70 %. Diagnostic au seuil par défaut sans TTL (test) : A taux de faux positifs 0,2512 %, rappel
+88,09 % ; B 0,1812 %, 82,48 % ; C 0,1508 %, 81,80 %.
+
+### Calibration sans TTL : le motif de M21 persiste
+
+Rapport du quantile 99 % des scores des normaux du test sur celui des scores hors
+échantillon : Isolation Forest **0,948** (0,5865 / 0,6186), AE petit **2,54** (0,6128 /
+0,2414), AE moyen **9,60** (0,1354 / 0,0141) ; avec TTL : 0,95 ; 2,46 ; 12,0. Indicateur
+commun (quantile 99 % dans l'échantillon / hors échantillon) : 1,010 ; 0,956 ; 0,752
+(avec TTL 0,993 ; 0,871 ; 0,686). L'ordre est le même sans TTL ; toujours trois points,
+pas une loi. Erreur de reconstruction hors échantillon sans TTL : moyen 0,00094 (médiane
+0,00023), petit 0,03950 (0,02835).
+
+### Rééchantillonnage apparié par blocs de temps (1 000 réplications, graine 42, IC à 95 %)
+
+Écarts en points de rappel lu au même taux. **Variante principale : blocs de 10 minutes**
+(76 blocs, 12 contiennent Reconnaissance, 12 Exploits) :
+
+- **Reconnaissance, avec TTL** : B − C +8,74 [+0,20 ; +22,59] à 0,1 % ; **+53,62 [+31,12 ; +62,44]
+  à 0,01 %** ; A − B +0,75 [−0,04 ; +2,42] à 0,01 %.
+- **Reconnaissance, sans TTL** : B − C **+34,77 [+19,41 ; +45,59]** à 0,1 % ; **+75,92 [+69,28 ;
+  +82,05] à 0,01 %** ; A − B −6,38 [−11,46 ; −2,33] à 0,01 %.
+- **Exploits, avec TTL** : B − C +1,86 [+0,09 ; +3,47] à 0,1 % ; +5,59 [+0,81 ; +8,94] à
+  0,01 % ; A − B +2,20 [−0,16 ; +4,92].
+- **Exploits, sans TTL** : B − C +3,96 [+2,20 ; +6,57] à 0,1 % ; **+28,28 [+20,82 ; +33,36] à
+  0,01 %** ; A − B −6,88 [−11,37 ; −3,24].
+- **Sans jumeau** (lignes sans jumeau dans A, B ni C), Reconnaissance : avec TTL B − C +11,77
+  [+0,28 ; +29,45] à 0,1 % et +63,98 [+41,47 ; +70,34] à 0,01 % ; sans TTL +45,70 [+26,04 ;
+  +58,28] et +67,93 [+60,41 ; +75,80]. La contamination par jumeaux (M11) ne fait pas l'écart.
+- Au seuil calibré (seuils fixes), Reconnaissance : B − C +55,00 [+51,09 ; +58,80] à 0,1 % et
+  +32,30 [+26,38 ; +38,57] à 0,01 % avec TTL ; +60,40 [+55,89 ; +65,55] et +36,38 [+30,61 ;
+  +42,27] sans TTL.
+
+**Les intervalles par blocs sont beaucoup plus larges que par lignes** : pour Reconnaissance
+avec TTL à 0,01 %, largeur 31,3 points (blocs de 10 minutes), 25,4 (blocs de 5 minutes, [+35,65 ;
++61,07]) et 10,1 (lignes une à une, [+46,86 ; +56,96]) ; à 0,1 %, 22,4 contre 4,8 (lignes). Les
+intervalles de Wilson des rappels par famille (M09, M16, M20, M24) sont de l'ordre des seconds :
+ils sont trop étroits. Le résultat central (B − C à 0,01 % sur Reconnaissance) exclut zéro
+dans toutes les variantes et les deux versions.
+
+**Limites de ces intervalles** : ils couvrent l'échantillonnage des lignes de test (par blocs
+de temps), pas la variabilité de l'entraînement (une seule exécution par condition, un seul
+tirage de B, XGBoost déterministe à données fixées). Le A − B significativement négatif sans
+TTL à 0,01 % (−6,4 et −6,9 points) pourrait refléter cette variabilité plutôt qu'un effet du
+volume ; non testé.
+
+### Lecture
+
+- **Le TTL était l'essentiel de la détection non supervisée par l'Isolation Forest** : AUC-PR
+  0,308 → 0,118 ; rappel lu à 1 % 42,9 % → 2,9 % ; Reconnaissance 42,2 % → 0,5 %. Sans lui, les
+  trois modèles non supervisés sont très faibles aux budgets stricts (rappel lu à 0,1 % :
+  0,01 % à 1,29 % ; AUC-PR de 4,4 à 8,4 fois la prévalence, contre 8,2 à 22 fois avec TTL).
+- **Le supervisé perd une partie de ses performances mais reste très bon** : AUC-PR 0,976 →
+  0,948 (A), rappel lu à 0,1 % 85,6 → 75,8 %, à 0,01 % 73,7 → 56,4 %. D'autres colonnes séparent
+  aussi les attaques (`Dload`, `ackdat`, `dmeansz`, état de la connexion : importance du gain).
+  Le TTL est donc un raccourci parmi d'autres, ou ces colonnes portent une vraie séparabilité ;
+  la mesure ne permet pas de trancher, et aucune autre ablation n'a été déclarée.
+- **Correction de la lecture de M24** : M24 écrivait que les résultats étaient « très
+  probablement gonflés » par le TTL et que l'AUC-PR de C était « cohérente avec un raccourci
+  partagé par toutes les familles ». L'ablation montre que **le TTL gonflait surtout le rappel
+  sur les familles inédites**, et masquait donc une perte plus grande : sans TTL, l'effet de la
+  famille inédite (B − C) est bien plus net, sur Reconnaissance comme sur Exploits (voir ci-dessus).
+  L'effet sur l'AUC-PR globale reste modeste (0,03).
+- **Réponse au projet, version sans TTL** : un modèle supervisé qui n'a jamais vu une famille la
+  détecte nettement moins bien aux budgets stricts. Reconnaissance : 62,5 % au lieu de 97,2 % à
+  0,1 %, 3,9 % au lieu de 79,8 % à 0,01 % ; Exploits : 88,0 % au lieu de 91,9 % à 0,1 %, 49,3 % au
+  lieu de 77,6 % à 0,01 %. À 1 % le rappel reste saturé (99,7 % à 99,9 %). Un modèle qui n'a jamais
+  vu d'attaque (non supervisé) n'en détecte presque aucune aux budgets stricts sans TTL.
+- **Fuzzers** est la famille la plus difficile pour le supervisé (rappel lu à 0,1 % : 29,8 %,
+  28,5 %, 40,2 % sans TTL ; 53,5 %, 43,9 %, 63,6 % avec) : plusieurs de ses flux sont indiscernables
+  de flux normaux (M07, 449 combinaisons normal / Fuzzers).
+
+### À reprendre dans le README (résultat)
+
+Deux versions côte à côte, avec et sans les colonnes TTL. Mesure de ce que le banc d'essai offre
+comme raccourci : le TTL porte l'essentiel de la détection de l'Isolation Forest, une partie de
+celle du supervisé, et masque une part de la perte sur les familles inédites. Les intervalles de
+confiance des rappels par famille doivent être ceux par blocs de temps.
+
