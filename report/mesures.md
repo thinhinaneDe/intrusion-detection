@@ -1556,3 +1556,181 @@ nature réelle. Une vérification serait possible avec `srcip`, `dstip` et
 `dsport`, exclus des features mais présents dans `data/raw` (par exemple le
 nombre de destinations et de ports distincts par source dans ces séries) ; elle
 n'a pas été faite.
+
+---
+
+## M20 — Autoencodeurs moyen et petit, sur le même pied, et corrections de M18 (2026-09-18)
+
+Décisions et code committés avant ce résultat (M19, `config.toml`,
+`src/models/autoencoder.py`). Aucun réglage n'a été fait après lecture des
+résultats. Commandes (les deux exécutées en parallèle, lancées à 21 h 00) :
+
+    venv/bin/python src/models/autoencoder.py --arch moyen
+    venv/bin/python src/models/autoencoder.py --arch petit
+    venv/bin/python src/models/autoencoder.py --compare-only
+
+Même calibration que l'Isolation Forest (M16) : 5 blocs de temps contigus,
+préprocesseur réajusté par bloc, budgets 1 %, 0,1 % (référence) et 0,01 %. 30
+epochs, lot 1 024, Adam 10⁻³, MSE sans écrêtage, 4 threads, graine 42. Perte
+d'entraînement du modèle final à l'epoch 30 : moyen 0,00088, petit 0,03150.
+
+### Corrections de M18 (coût et threads)
+
+- **Les estimations de M18 étaient fausses d'un facteur 3 à 6.** M18 annonçait
+  3,5 min (petit) et 6,5 min (moyen) pour 30 epochs. Mesuré : petit **709 s
+  (11,8 min) seul**, 1 398 s en parallèle ; moyen **1 868 s (31 min) en
+  parallèle**, non mesuré seul. Les deux en parallèle ont pris 31,1 min de
+  temps réel (durée du moyen, le plus long), ce qui **dépasse de peu le budget de
+  30 minutes** de l'auteur.
+  Exécuter les deux architectures en parallèle est 2,1 fois plus lent pour
+  chacune (petit : 1 386 s en parallèle contre 701 s seul, dans la seconde
+  exécution) : aucun gain.
+- **Cause : le temps par epoch varie d'un facteur 3 sur cette machine selon le
+  moment, indépendamment du nombre de threads** (cause non investiguée). Petit,
+  lot 1 024 : 1,11 s dans la première série de mesures de M18, 3,2 à 3,6 s dans
+  toutes les mesures suivantes. M18 en avait tiré à tort que « 4 threads est le
+  bon réglage » : la mesure à 4 threads était la première de la série, celles à
+  1, 2 et 8 threads sont venues après, dans le régime lent. Mesures refaites
+  après coup (petit puis moyen, lot 1 024) : 4 threads 3,59 s et 6,29 s ; 2
+  threads 3,54 s et 6,78 s ; 1 thread 3,18 s et 5,83 s. **Sur ces réseaux le
+  nombre de threads ne change pas le temps** ; la conclusion de M18 sur les
+  threads est retirée. `threads = 4` reste dans `config.toml` (décision
+  d'origine), utile pour fixer les résultats : la relance du petit donne des
+  scores identiques bit à bit (voir plus bas).
+- **Surcoût fixe** d'environ une minute par architecture (préprocesseur réajusté
+  à chaque bloc, notation, rapport), non compté dans les estimations de M18.
+
+### Reproductibilité
+
+Le petit relancé seul (701 s) donne des scores du test et hors échantillon
+**identiques bit à bit** à la première exécution (écart absolu maximal 0), et des
+résultats d'évaluation identiques. Le moyen n'a pas été relancé.
+
+### Autoencodeur moyen [128, 64, 16] — 33 224 paramètres
+
+- **AUC-PR 0,1213** (prévalence 1,395 %).
+- Erreur de reconstruction des normaux hors échantillon : moyenne 0,00110,
+  médiane 0,00021, quantile 99 % 0,01556.
+- Budget 1 % : seuil 0,0156 ; **taux observé sur le test 6,9733 %** [6,9238 ;
+  7,0232] (70 355 faux positifs, 5 585 par heure en moyenne, 27 120 la pire
+  heure) ; rappel 58,19 % [57,38 ; 58,99] ; VP 8 308, FP 70 355, FN 5 970, VN
+  938 563 ; précision 10,56 %.
+- Budget 0,1 % : seuil 0,1011 ; **observé 1,8965 %** [1,8701 ; 1,9233] (19 134
+  faux positifs, 1 519 par heure, 14 616 la pire heure) ; rappel 11,19 % [10,69 ;
+  11,72] ; VP 1 598, FN 12 680 ; précision 7,71 %.
+- Budget 0,01 % : seuil 0,4011 ; **observé 0,1940 %** [0,1856 ; 0,2027] (1 957
+  faux positifs, 155 par heure) ; rappel 1,53 % [1,34 ; 1,75] ; précision 10,06 %.
+- Rappel lu au même taux sur le test (1 % ; 0,1 % ; 0,01 %) : **6,11 %** [5,73 ;
+  6,51] ; **0,64 %** [0,53 ; 0,79] ; **0,00 %** [0,00 ; 0,03].
+- Quantiles du score (50 %, 99 %, 99,9 %, 99,99 %) : hors échantillon 0,0002 ;
+  0,0156 ; 0,1011 ; 0,4001 · normaux du test 0,0002 ; 0,1875 ; 0,5655 ; 1,5590 ·
+  attaques du test 0,0325 ; 0,4583 ; 0,9658 ; 1,2794.
+
+### Autoencodeur petit [32, 16, 8] — 5 024 paramètres
+
+- **AUC-PR 0,1144.**
+- Erreur de reconstruction des normaux hors échantillon : moyenne 0,03476,
+  médiane 0,02457, quantile 99 % 0,24403.
+- Budget 1 % : seuil 0,2440 ; **observé 2,4589 %** [2,4288 ; 2,4893] (24 808
+  faux positifs, 1 970 par heure, 15 922 la pire heure) ; rappel 22,80 % [22,12 ;
+  23,50] ; VP 3 256, FP 24 808, FN 11 022, VN 984 110 ; précision 11,60 %.
+- Budget 0,1 % : seuil 0,9381 ; **observé 0,3903 %** [0,3783 ; 0,4027] (3 938
+  faux positifs, 313 par heure, 2 775 la pire heure) ; rappel 2,72 % [2,46 ;
+  3,00] ; VP 388, FN 13 890 ; précision 8,97 %.
+- Budget 0,01 % : seuil 3,2460 ; **observé 0,0036 %** [0,0026 ; 0,0049] (36
+  faux positifs, 2,9 par heure) ; rappel 0,06 % [0,03 ; 0,11] ; VP 8 ; précision
+  18,18 %.
+- Rappel lu au même taux sur le test : **6,23 %** [5,84 ; 6,63] ; **1,41 %**
+  [1,23 ; 1,62] ; **0,27 %** [0,20 ; 0,37].
+- Quantiles du score : hors échantillon 0,0246 ; 0,2440 ; 0,9380 ; 3,2448 ·
+  normaux du test 0,0282 ; 0,6007 ; 1,3158 ; 2,4825 · attaques du test 0,1333 ;
+  1,5156 ; 3,0548 ; 4,0002.
+
+### Rappel par famille (n = effectifs de test)
+
+Au seuil calibré (le taux de faux positifs réel diffère d'un modèle à l'autre,
+voir ci-dessus ; les comparaisons entre modèles se font plutôt sur le rappel lu
+au même taux). Budget 1 % (analysis, backdoors, dos, exploits, fuzzers, generic,
+reconnaissance, shellcode, worms), en % :
+
+- moyen : 100,00 ; 90,30 ; 75,88 ; 75,61 ; 29,52 ; 92,87 ; 13,05 ; 3,14 ; 50,00 ;
+- petit : 13,95 ; 10,37 ; 29,33 ; 52,87 ; 10,47 ; 8,22 ; 8,22 ; 0,90 ; 33,33.
+
+Budget 0,1 % (référence) : moyen 8,64 ; 13,38 ; 16,97 ; 26,15 ; 3,08 ; 6,64 ;
+1,15 ; 0,00 ; 16,67 · petit 1,33 ; 5,35 ; 7,15 ; 5,10 ; 1,20 ; 1,52 ; 0,46 ;
+0,00 ; 16,67. Budget 0,01 % : moyen 0,66 ; 2,01 ; 4,24 ; 3,02 ; 0,20 ; 1,24 ;
+0,40 ; 0,00 ; 16,67 · petit 0,00 ; 0,00 ; 0,85 ; 0,02 ; 0,00 ; 0,00 ; 0,00 ;
+0,00 ; 0,00. Les intervalles de Wilson sont dans
+`data/processed/results/autoencoder_*.json`.
+
+Au même taux de faux positifs lu sur le test (1 % ; 0,1 % ; 0,01 %), en % :
+Analysis moyen 1,00 ; 0,00 ; 0,00 · petit 1,66 ; 0,66 ; 0,00 — Backdoors 5,69 ;
+1,00 ; 0,00 · 5,69 ; 3,34 ; 1,00 — DoS 10,67 ; 2,30 ; 0,00 · 11,76 ; 5,58 ; 1,70
+— **Exploits 13,63 ; 1,16 ; 0,00 · 12,96 ; 2,13 ; 0,45** — Fuzzers 1,58 ; 0,00 ;
+0,00 · 3,31 ; 0,75 ; 0,00 — Generic 4,66 ; 0,67 ; 0,00 · 3,39 ; 0,74 ; 0,14 —
+**Reconnaissance 0,80 ; 0,11 ; 0,00 · 0,75 ; 0,34 ; 0,00** — Shellcode 0,00 ;
+0,00 ; 0,00 · 0,45 ; 0,00 ; 0,00 — Worms 16,67 ; 8,33 ; 0,00 · 16,67 ; 4,17 ;
+0,00.
+
+Découpe avec/sans jumeau : identique à l'Isolation Forest (M16), car le jeu est
+le même : 13 lignes d'attaque ont un jumeau (12 Fuzzers, 1 Shellcode), toutes
+non détectées par les deux architectures ; Reconnaissance et Exploits n'ont
+aucune ligne avec jumeau.
+
+### Diagnostic de l'option 1
+
+Optimisme mesuré (taux hors échantillon au seuil tiré des scores
+d'entraînement, rapporté au budget visé ; 1 % / 0,1 % / 0,01 %) : moyen ×1,30 /
+×1,72 / ×3,27 ; petit ×1,18 / ×1,31 / ×2,96 ; pour mémoire Isolation Forest
+×1,30 / ×1,32 / ×4,12 (M16). Ces écarts sont bien plus petits que l'écart de
+calibration jour 2 → jour 1 (voir ci-dessous).
+
+### Comparaison des trois modèles
+
+- **AUC-PR : Isolation Forest 0,3081 ; moyen 0,1213 ; petit 0,1144.** Les deux
+  autoencodeurs sont à 8,7 et 8,2 fois la prévalence ; l'Isolation Forest à 22
+  fois. **Aucun autoencodeur ne bat l'Isolation Forest sur l'AUC-PR** (règle du
+  projet : le rapporter tel quel). La différence moyen-petit (0,0069) n'a pas
+  d'intervalle de confiance calculé.
+- **Rappel lu au même taux de faux positifs sur le test** (1 % ; 0,1 % ; 0,01 %) :
+  Isolation Forest 42,92 % ; 2,49 % ; 0,06 % · moyen 6,11 % ; 0,64 % ; 0,00 % ·
+  petit 6,23 % ; 1,41 % ; 0,27 %. À 1 %, l'Isolation Forest est 7 fois meilleure
+  que les deux autoencodeurs, qui sont indiscernables entre eux (intervalles qui
+  se recouvrent). À 0,1 % et 0,01 %, **le petit est meilleur que le moyen**
+  (1,41 % contre 0,64 %, intervalles disjoints ; 0,27 % contre 0,00 %). À 0,1 %
+  l'Isolation Forest reste devant (2,49 %) ; à 0,01 % le petit la dépasse (0,27 %
+  contre 0,06 %, tous rappels très bas). Le moyen reconstruit les
+  normaux hors échantillon 31,6 fois mieux en moyenne (0,00110 contre 0,03476 ;
+  117 fois pour la médiane) sans mieux détecter : au taux de 1 % il est
+  équivalent, aux taux stricts il est moins bon, et son AUC-PR n'est meilleure
+  que de 0,0069.
+- **Taux de faux positifs observé sur le test contre visé (1 % ; 0,1 % ; 0,01 %)** :
+  Isolation Forest 0,1152 % ; 0,0162 % ; 0,0038 % (au-dessous, calibration
+  conservatrice) · petit 2,4589 % ; 0,3903 % ; 0,0036 % (2,5 fois et 3,9 fois
+  au-dessus, puis au-dessous) · moyen 6,9733 % ; 1,8965 % ; 0,1940 % (7 fois, 19
+  fois et 19 fois au-dessus). À budget de référence 0,1 %, le seuil déployable
+  donne 13 fausses alertes par heure pour l'Isolation Forest, 313 pour le petit et
+  1 519 pour le moyen (au lieu des 80 visées).
+- **La calibration jour 2 → jour 1 se dégrade quand le modèle colle plus aux
+  normaux du jour 2.** Rapport entre le quantile 99 % des scores des normaux du
+  test et celui des scores hors échantillon du jour 2 : Isolation Forest 0,95
+  (0,5882 / 0,6190) ; petit 2,46 (0,6007 / 0,2440) ; moyen 12,0 (0,1875 / 0,0156).
+  Constat sur trois modèles, pas une loi établie. Les médianes des normaux
+  coïncident (moyen : 0,0002 des deux côtés). Cela recoupe M17 : les normaux du
+  jour 2 et du jour 1 diffèrent surtout dans les queues (flux INT/REQ denses).
+
+### Lecture
+
+- La question posée en M19 (le petit détecte-t-il mieux que le moyen malgré une
+  reconstruction bien moins bonne ?) reçoit une réponse **partielle** : pas au
+  taux de 1 % ni sur l'AUC-PR, mais oui aux taux stricts de 0,1 % et 0,01 %, où
+  l'écart est significatif au sens des intervalles de M20 (indépendance des
+  lignes supposée, optimiste).
+- Les deux autoencodeurs sont des références faibles face à l'Isolation Forest sur
+  ces données. Ces résultats ne sont pas expliqués : ce qui reste à examiner
+  (non fait) est ce qui, dans les normaux du jour 1, obtient une forte erreur de
+  reconstruction chez le moyen.
+- Le budget de référence 0,1 % ne donne du contraste qu'entre modèles à
+  calibration comparable ; le taux observé, pas le taux visé, est ce qui décide
+  du déploiement. À reprendre dans le README (limites) : calibration sous dérive
+  temporelle.
