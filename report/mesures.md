@@ -535,3 +535,191 @@ Lecture :
   Le plafond réel est donc inférieur ou égal à ces valeurs.
 - Ces plafonds sont à rapporter tels quels dans le README (section
   limites), à côté de la mention de la labellisation contestée.
+
+---
+
+## M09 — Copies exactes par famille, et précision atteignable par famille au test (2026-09-18)
+
+Commande (9 s) :
+
+    python3 src/ic_rappel.py
+
+Même chaîne que M08 (découpage temporel, puis déduplication exacte sur 49
+colonnes par côté). Les effectifs par famille sont ici mesurés directement ;
+ils coïncident avec ceux calculés par différence en M08.
+
+### Résultat sur la qualité du jeu : la majorité des attaques Generic du jour 2 sont des copies exactes
+
+Ce n'est pas seulement une étape de nettoyage : c'est une propriété du jeu,
+à rapporter comme telle dans le README.
+
+Part de lignes supprimées par la déduplication exacte, par famille.
+
+Jour 2 (entraînement) : **Generic 89,2 % (185 414 sur 207 959, il en reste
+22 545)** ; DoS 68,1 % (10 346 sur 15 186) ; Exploits 39,8 % (15 559 sur
+39 116) ; Analysis 12,5 % ; Fuzzers 7,2 % ; Backdoors 6,2 % ; Reconnaissance
+5,0 % ; Worms 2,0 % ; Shellcode 0 % ; normal 17,6 % (202 921 sur 1 153 774).
+
+Jour 1 (test) : **Generic 62,3 % (4 689 sur 7 522)** ; Backdoors 44,0 % ;
+Analysis 42,8 % ; DoS 29,3 % ; Exploits 25,3 % ; Fuzzers 21,0 % ;
+Reconnaissance 1,1 % ; Shellcode 0 % ; Worms 0 % ; normal 5,3 % (56 069 sur
+1 064 987).
+
+Les taux diffèrent beaucoup entre les deux jours pour une même famille
+(Generic : 89,2 % contre 62,3 % ; Backdoors : 6,2 % contre 44,0 %), ce qui
+ne se réduit pas à une propriété de la famille. Ce qui produit ces copies (une
+même trame journalisée plusieurs fois, un outil de génération qui répète un
+flux identique, ou autre) n'a pas été investigué : la mesure établit
+l'existence des copies, pas leur cause. Il s'agit de copies sur les 49
+colonnes, c'est-à-dire aussi mêmes IP, mêmes ports, même seconde.
+
+### Effectifs du test après déduplication (jour 1)
+
+Attaques : 14 278 au total. Exploits 4 042 ; Fuzzers 3 991 ; Generic 2 833 ;
+Reconnaissance 1 740 ; DoS 825 ; Analysis 301 ; Backdoors 299 ; Shellcode 223 ;
+Worms 24. Normal : 1 008 918.
+
+### Intervalle de confiance à 95 % d'un rappel hypothétique de 0,80
+
+Le rappel de 0,80 est une hypothèse de travail choisie pour comparer la
+précision de mesure des familles entre elles. **Ce n'est pas une performance
+mesurée ni attendue.** Les intervalles dépendent seulement de l'effectif de
+test. Wilson, avec p = 0,80 ; contrôle par le Clopper-Pearson exact avec
+k = arrondi(0,80 × n) succès (donc un rappel observé k/n très légèrement
+différent de 0,80).
+
+- Worms, n = 24 : Wilson [0,604 ; 0,913], demi-largeur 15,4 points ; exact
+  (k = 19) [0,578 ; 0,929].
+- Shellcode, n = 223 : [0,743 ; 0,847], ±5,2 points ; exact (k = 178)
+  [0,739 ; 0,849].
+- Backdoors, n = 299 : [0,751 ; 0,841], ±4,5 points ; exact (k = 239)
+  [0,749 ; 0,843].
+- Analysis, n = 301 : [0,751 ; 0,841], ±4,5 points ; exact (k = 241)
+  [0,751 ; 0,844].
+- DoS, n = 825 : [0,771 ; 0,826], ±2,7 points ; exact (k = 660) [0,771 ; 0,827].
+- Reconnaissance, n = 1 740 : [0,781 ; 0,818], ±1,9 point ; exact (k = 1 392)
+  [0,780 ; 0,819].
+- Generic, n = 2 833 : [0,785 ; 0,814], ±1,5 point ; exact (k = 2 266)
+  [0,785 ; 0,814].
+- Fuzzers, n = 3 991 : [0,787 ; 0,812], ±1,2 point ; exact (k = 3 193)
+  [0,787 ; 0,812].
+- Exploits, n = 4 042 : [0,787 ; 0,812], ±1,2 point ; exact (k = 3 234)
+  [0,787 ; 0,812].
+
+Wilson et exact concordent à 0,02 près sauf pour Worms (écart de 2 points sur
+la borne basse), où l'approximation est la moins bonne.
+
+Lecture :
+
+- **Worms est la seule famille dont l'intervalle est trop large pour
+  conclure** : avec 24 lignes, un rappel de 0,60 et un rappel de 0,90 sont
+  tous les deux compatibles avec la mesure. Les autres ont une demi-largeur
+  d'au plus 5,2 points.
+- Le seuil entre « exploitable » et « trop petit » dépend de l'écart qu'on
+  cherche à voir entre le témoin et le traitement (M05) : il n'est pas fixé ici.
+- **Ces intervalles sont optimistes.** Ils supposent des lignes indépendantes.
+  Des flux issus d'une même rafale ou d'un même balayage ne le sont pas, et la
+  proportion de copies exactes trouvée ci-dessus indique que la répétition est
+  fréquente. Le nombre effectif d'observations indépendantes est inférieur à
+  n ; de combien, cela n'a pas été mesuré.
+- Ils portent sur un rappel isolé. La comparaison témoin/traitement se fait sur
+  les mêmes lignes de test (mesures appariées) ; sa précision n'est pas celle
+  d'un rappel isolé et n'est pas calculée ici.
+
+Correction sur M08 : j'y écrivais que le plafond intéressant était celui du
+Fuzzers. Les 11 faux négatifs irréductibles au test pèsent 11 lignes sur
+3 991 Fuzzers (0,3 %, calcul arithmétique) : au niveau binaire, ce plafond est
+négligeable même pour cette famille. Le plafond notable reste celui des
+familles entre elles (M08, niveau multiclasse).
+
+---
+
+## M10 — Familles retirées de l'entraînement supervisé, composition résultante (2026-09-18)
+
+### Décision de l'auteur
+
+Familles retirées de l'entraînement supervisé (condition « traitement ») :
+**Exploits et Reconnaissance.**
+
+Raisons données : ce sont les deux familles où la mesure au test est la plus
+précise (demi-largeurs de ±1,2 et ±1,9 point sur un rappel hypothétique de
+0,80, M09) ; elles sont conceptuellement distinctes (exploitation d'une
+vulnérabilité contre balayage exploratoire), donc si un modèle en détecte une
+et pas l'autre, le résultat est interprétable.
+
+Écartées : **Worms** (24 lignes au test, ±15,4 points, non concluant) et
+**Generic** (le retirer amputerait l'entraînement d'environ 26 % de ses
+attaques, ce qui dégraderait le modèle pour une raison étrangère à
+l'expérience).
+
+Le témoin (M05) garde toutes les familles à l'entraînement. Les deux
+conditions utilisent la même partition temporelle et le même jeu de test.
+
+### Vérification et composition
+
+Calcul arithmétique à partir des effectifs mesurés en M09 (aucune lecture des
+données). Commande :
+
+    python3 -c "
+    train = {'Exploits':23557,'Fuzzers':17804,'Generic':22545,'Reconnaissance':11617,'DoS':4840,'Analysis':1883,'Backdoors':1684,'Shellcode':1288,'Worms':147}
+    test  = {'Exploits':4042,'Fuzzers':3991,'Generic':2833,'Reconnaissance':1740,'DoS':825,'Analysis':301,'Backdoors':299,'Shellcode':223,'Worms':24}
+    normal_train, normal_test = 950853, 1008918
+    removed = ['Exploits','Reconnaissance']
+    ta = sum(train.values()); rm = sum(train[f] for f in removed); left = ta - rm
+    print('attaques train', ta, '| retirées', rm, f'({100*rm/ta:.1f} %)', '| restantes', left)
+    for f, n in sorted(train.items(), key=lambda kv: -kv[1]):
+        if f not in removed: print(f'  {f:14s} {n:6d}  {100*n/left:5.1f} % des attaques restantes')
+    print(f'part d attaques dans train: témoin {100*ta/(ta+normal_train):.2f} % -> traitement {100*left/(left+normal_train):.2f} %')
+    print(f'ratio normal/attaque: témoin {normal_train/ta:.1f} -> traitement {normal_train/left:.1f}')
+    tt = sum(test.values()); tr = sum(test[f] for f in removed)
+    print('test: attaques', tt, '| familles retirées', tr, f'({100*tr/tt:.1f} %)', '| familles vues', tt-tr)
+    "
+
+Résultat :
+
+- Attaques d'entraînement (après déduplication) : 85 365. Retirées : 23 557
+  (Exploits) + 11 617 (Reconnaissance) = **35 174, soit 41,2 %**. Le chiffre
+  de l'auteur est confirmé. **Restent 50 191 attaques.**
+- Composition d'entraînement du traitement, attaques : Generic 22 545
+  (44,9 %) ; Fuzzers 17 804 (35,5 %) ; DoS 4 840 (9,6 %) ; Analysis 1 883
+  (3,8 %) ; Backdoors 1 684 (3,4 %) ; Shellcode 1 288 (2,6 %) ; Worms 147
+  (0,3 %). Generic et Fuzzers font à eux deux environ 80 % des attaques
+  restantes.
+- Normal d'entraînement : 950 853 dans les deux conditions.
+- Part d'attaques à l'entraînement : 8,24 % (témoin) → 5,01 % (traitement).
+  Rapport normal/attaque : 11,1 → 18,9.
+- Test : 14 278 attaques, dont **5 782 (40,5 %) de familles retirées**
+  (Exploits 4 042 + Reconnaissance 1 740) et 8 496 de familles vues.
+
+### Le volume restant est-il suffisant ?
+
+Avis, non mesure : je n'ai entraîné aucun modèle, et aucune performance n'est
+estimée ici.
+
+- Le volume absolu ne paraît pas être le problème : 50 191 attaques contre
+  950 853 normaux, c'est de quoi entraîner un gradient boosting. Les familles
+  minces sont Worms (147) et, plus modestement, Shellcode (1 288), Backdoors
+  (1 684) et Analysis (1 883). Le déséquilibre passe de 11 pour 1 à 19 pour 1 ;
+  cela se traite au niveau du modèle (pondération de classes) et du seuil, et
+  reste à décider.
+- **Le vrai risque n'est pas le volume mais la confusion des effets.** Le
+  traitement diffère du témoin par trois choses à la fois : la famille absente,
+  41 % d'attaques en moins, et une composition dominée à 80 % par Generic et
+  Fuzzers. L'écart témoin/traitement mesure la somme des trois. Or la règle
+  posée en M05 est que cet écart isole l'effet « famille inédite ».
+
+Options pour isoler l'effet, à trancher par l'auteur :
+
+1. **Deux conditions seulement** (telles que décidées). Simple ; l'écart reste
+   attribuable à la famille inédite *et* à la perte de données, sans pouvoir
+   les séparer.
+2. **Témoin à volume égal** : une troisième condition, où l'on retire du
+   témoin 35 174 lignes d'attaque tirées au hasard, proportionnellement aux
+   familles (graine fixée). Même volume que le traitement, mais les familles
+   restent toutes présentes. Coût faible ; ne sépare pas la composition.
+3. **Courbe d'apprentissage du témoin** : entraîner le témoin sur plusieurs
+   fractions de ses attaques, et lire la sensibilité de la performance au
+   volume. Plus informatif, plus de calculs (peu, avec un boosting).
+
+Recommandation : l'option 2 comme minimum, l'option 3 si le temps le permet.
+Ce n'est qu'une recommandation ; le choix appartient à l'auteur.
