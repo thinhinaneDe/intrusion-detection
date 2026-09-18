@@ -6,6 +6,14 @@ Les résultats qui contredisent une hypothèse restent écrits.
 Environnement : Python 3.12.13, bibliothèque standard uniquement (le venv est
 vide à cette date). Les commandes sont lancées depuis la racine du dépôt.
 
+> **Avertissement sur les intervalles de confiance.** Les intervalles de Wilson
+> consignés en M09, M16, M20 et M24 supposent des observations indépendantes. Or les
+> attaques du test arrivent en rafales (Reconnaissance et Exploits tombent chacun dans
+> 12 blocs de 10 minutes sur 76, M25) : **ces intervalles sont trop étroits**, de 3 à 5
+> fois pour les rappels par famille (M26). Seuls les intervalles par blocs de temps
+> (M25, M26, M28) remontent dans le README ; les rappels sans intervalle par blocs y
+> figurent sans intervalle.
+
 ---
 
 ## M01 — Audit des CSV bruts UNSW-NB15 (2026-09-18)
@@ -2347,4 +2355,54 @@ Deux versions côte à côte, avec et sans les colonnes TTL. Mesure de ce que le
 comme raccourci : le TTL porte l'essentiel de la détection de l'Isolation Forest, une partie de
 celle du supervisé, et masque une part de la perte sur les familles inédites. Les intervalles de
 confiance des rappels par famille doivent être ceux par blocs de temps.
+
+---
+
+## M27 — Limites formulées, et méthode des intervalles du README (2026-09-18)
+
+Décisions de l'auteur, consignées avant tout calcul de la section suivante.
+
+### Limite sur les ablations (arrêt décidé)
+
+**Le protocole mesure ce qu'un raccourci identifié offrait ; il ne prouve pas qu'il n'en
+reste aucun.** Une régression d'ablations n'a pas de critère d'arrêt : chaque colonne
+retirée peut en révéler une autre (après le TTL, `Dload`, `ackdat`, `dmeansz` et l'état de
+la connexion portent encore le modèle supervisé, M26). L'auteur décide de **ne pas faire
+d'autre ablation** ; le README nomme cette limite dans la même formulation. Ce qui est
+mesuré : l'apport du TTL. Ce qui ne l'est pas : ce qui resterait sans les autres colonnes
+que le supervisé exploite.
+
+### Limite sur la variabilité d'entraînement
+
+**Une seule exécution par condition, un seul tirage de B** (graine 42), XGBoost déterministe
+à données fixées, autoencodeurs à graine fixée. **La variabilité d'entraînement n'est pas
+mesurée**, donc les petits écarts ne sont pas interprétables. Exemples concernés : le A − B
+significativement négatif sans TTL à 0,01 % (−6,4 points pour Reconnaissance, −6,9 pour
+Exploits, M26), la différence d'AUC-PR entre autoencodeur moyen et petit (0,007, M20), les écarts de
+quelques points entre A, B et C à 0,1 %. Aucun seuil chiffré d'interprétabilité n'est posé,
+faute de mesure : le README n'interprète que les écarts de plusieurs dizaines de points
+(par exemple B − C sur Reconnaissance à 0,01 %) et le dit. **Non fait, piste** : répéter
+l'entraînement sur plusieurs graines et plusieurs tirages de B (le protocole supervisé
+complet coûte environ 5 minutes), pour mesurer cette variabilité.
+
+### Intervalles du README : méthode déclarée
+
+Pour que seuls des intervalles par blocs figurent dans le README, ils sont calculés pour
+tous les chiffres qui y apparaissent avec un intervalle, **avec la méthode de M25** : 1 000
+réplications, blocs de temps de 10 minutes, graine 42, intervalle à 95 % par percentiles, les
+mêmes blocs tirés pour tous les modèles dans une réplication. Grandeurs (`src/block_ci.py`,
+version avec et sans TTL) :
+
+- l'AUC-PR de chaque modèle ;
+- le taux de faux positifs observé au seuil calibré, le rappel global au seuil calibré et au
+  même taux lu sur le test (le seuil est recalculé à chaque réplication sur les normaux tirés),
+  à chaque budget ;
+- le rappel par famille aux mêmes points de fonctionnement ;
+- le rappel de deux groupes de familles : **les familles retirées de C** (Exploits et
+  Reconnaissance) et **les sept autres**, qui permettent de comparer A, B et C sur les mêmes
+  lignes.
+
+Pas d'intervalle par blocs, donc rapportés sans intervalle : le rappel sur les attaques tenues à
+l'écart, les rapports de calibration (0,95 ; 2,5 ; 12 et leurs équivalents sans TTL), le
+diagnostic au seuil par défaut.
 
