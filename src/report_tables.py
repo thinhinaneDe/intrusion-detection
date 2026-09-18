@@ -122,6 +122,40 @@ def main() -> None:
                 rows.append([f"{c} ({lab})", bl(b), f"{100 * o['recall']:.1f}", f"{100 * hits / n:.1f}"])
     print(table(["Condition", "Budget", "Tenues à l'écart (jour 2)", "Test, mêmes familles"], rows))
 
+    print("\n### T9 — Sans TTL, budget de référence 0,1 % : matrice de confusion complète au seuil calibré, précision, F1 "
+          "(la précision et le F1 par famille ne sont pas définis : les faux positifs sont des flux normaux)\n")
+    ref = str(cfg["evaluation"]["reference_fpr"])
+    rows = []
+    for m, lab in MODELS:
+        b = js[("sans", m)]["evaluation"]["budgets"][ref]
+        c, p, r = b["confusion"], b["precision"], b["recall"]
+        f1 = 2 * p * r / (p + r) if p == p and (p + r) > 0 else float("nan")
+        rows.append([lab, str(c["tp"]), str(c["fp"]), str(c["fn"]), str(c["tn"]), f"{100 * p:.1f}", f"{100 * f1:.1f}",
+                     f"{b['false_alerts_per_hour_mean']:.1f} ; {b['false_alerts_max_hour']}"])
+    print(table(["Modèle", "VP", "FP", "FN", "VN", "Précision (%)", "F1 (%)", "Fausses alertes/h (moyenne ; pire heure)"], rows))
+
+    print("\n### T10 — Sans TTL : Reconnaissance (1 740 lignes de test), rappel avec et sans jumeau dans le jeu d'entraînement "
+          "(en %, sans intervalle par blocs)\n")
+    rows = []
+    for c in ("A", "B", "C"):
+        for b in ("0.001", "0.0001"):
+            for kind, key in (("au seuil calibré", None), ("lu au même taux", "matched")):
+                bb = js[("sans", f"supervised_{c}")]["evaluation"]["budgets"][b]
+                rec = next(x for x in (bb["by_family"] if key is None else bb[key]["by_family"])
+                           if x["family"] == "Reconnaissance")
+                rows.append([f"Supervisé {c}", bl(b), kind, f"{100 * rec['recall']:.1f}",
+                             f"{100 * rec['recall_twin']:.1f} (n = {rec['n_twin']})" if rec["n_twin"] else f"n = 0",
+                             f"{100 * rec['recall_no_twin']:.1f} (n = {rec['n_no_twin']})"])
+    print(table(["Condition", "Budget", "Seuil", "Tous", "Avec jumeau", "Sans jumeau"], rows))
+
+    print("\n### T11 — Sans TTL : Reconnaissance, écart B − C lu au même taux, sans jumeau dans A, B ni C "
+          "(points, IC par blocs apparié)\n")
+    rows = []
+    for b in ("0.001", "0.0001"):
+        e = pb["sans"]["rows"][f"lu|sans jumeau|{b}|Reconnaissance"]
+        rows.append([bl(b), f"{e['B − C']['point']:+.1f} [{e['B − C']['lo']:+.1f} ; {e['B − C']['hi']:+.1f}]"])
+    print(table(["Budget", "B − C sans jumeau"], rows))
+
 
 if __name__ == "__main__":
     main()

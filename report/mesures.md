@@ -2486,3 +2486,47 @@ identiques. Les tables du README sont générées par `src/report_tables.py` dep
 - **Écarts de quelques points** entre A, B et C, ou entre modèles non supervisés : non
   interprétés (M27, variabilité d'entraînement non mesurée).
 
+---
+
+## M29 — README : mesures complémentaires (sans TTL) et vérification des chiffres (2026-09-18)
+
+Commandes :
+
+    venv/bin/python src/report_tables.py
+
+Le README est écrit avec la version **sans TTL comme résultat principal** et la version avec
+TTL comme mesure du raccourci. Ses tables sont générées par `src/report_tables.py` depuis les
+résultats ; le texte ne contient que des chiffres du journal ou de ces tables. Vérification :
+les valeurs et intervalles cités dans le texte (AUC-PR, rappels, écarts B − C et A − B, taux de
+faux positifs observés, écarts appariés) ont été recoupés par programme avec `block_ci.json` et
+`paired_bootstrap.json` ; un seul écart trouvé (un écart cité sans son intervalle), corrigé.
+
+### Matrice de confusion complète, précision, F1, sans TTL, budget de référence 0,1 % (seuil calibré)
+
+VP ; FP ; FN ; VN ; précision ; F1 ; fausses alertes par heure (moyenne ; pire heure) :
+
+- Isolation Forest : 4 ; 1 333 ; 14 274 ; 1 007 585 ; 0,3 % ; 0,1 % ; 105,8 ; 199.
+- Autoencodeur moyen : 1 301 ; 16 435 ; 12 977 ; 992 483 ; 7,3 % ; 8,1 % ; 1 304,7 ; 12 573.
+- Autoencodeur petit : 518 ; 7 171 ; 13 760 ; 1 001 747 ; 6,7 % ; 4,7 % ; 569,3 ; 5 176.
+- Supervisé A : 10 561 ; 831 ; 3 717 ; 1 008 087 ; 92,7 % ; 82,3 % ; 66,0 ; 132.
+- Supervisé B : 10 330 ; 657 ; 3 948 ; 1 008 261 ; 94,0 % ; 81,8 % ; 52,2 ; 134.
+- Supervisé C : 8 786 ; 583 ; 5 492 ; 1 008 335 ; 93,8 % ; 74,3 % ; 46,3 ; 110.
+
+La précision et le F1 par famille ne sont pas définis : les faux positifs sont des flux normaux,
+non attribuables à une famille.
+
+### Reconnaissance sans TTL : rappel avec et sans jumeau (points, sans intervalle par blocs)
+
+Lignes de test ayant un jumeau dans le jeu d'entraînement : 449 (A), 415 (B), 1 (C), inchangé
+avec les 38 variables. Au seuil calibré / lu au même taux, tous · avec jumeau · sans jumeau :
+
+- **A, 0,1 %** : 96,4 · 100,0 · 95,1 / 96,6 · 100,0 · 95,4 ; **0,01 %** : 30,3 · 10,7 · 37,2 /
+  73,4 · 92,7 · 66,8.
+- **B, 0,1 %** : 96,1 · 100,0 · 94,9 / 97,2 · 100,0 · 96,4 ; **0,01 %** : 39,1 · 42,2 · 38,2 /
+  79,8 · 100,0 · 73,5.
+- **C, 0,1 %** : 35,7 / 62,5 (1 seul jumeau) ; **0,01 %** : 2,8 / 3,9.
+
+Écart B − C lu au même taux, **sans jumeau dans A, B ni C** (IC par blocs apparié) : +45,7
+[+26,0 ; +58,3] à 0,1 % ; +67,9 [+60,4 ; +75,8] à 0,01 %. La contamination par jumeaux gonfle le
+rappel global de A et de B aux budgets stricts sans expliquer l'écart B − C.
+
