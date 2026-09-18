@@ -2098,3 +2098,92 @@ vérifiée : les normaux à TTL source 254 (2,89 % au jour 2 contre 0,42 % au jo
 seraient des flux issus des hôtes générateurs d'attaques étiquetés normaux, ce qui
 rejoindrait la labellisation contestée (M19).
 
+---
+
+## M25 — Ablation TTL et rééchantillonnage apparié : décisions déclarées avant tout résultat (2026-09-18)
+
+Ces décisions, `config_sans_ttl.toml` et l'héritage de configuration
+(`load_config`, clé `extends`) sont committés avant toute exécution sans TTL et avant
+tout calcul d'intervalle, pour que la déclaration d'avance soit vérifiable.
+
+### 1. Ablation TTL
+
+**Décision de l'auteur** : retirer `sttl`, `dttl` et `ct_state_ttl` des features,
+déclaré d'avance comme l'exclusion des IP et des horodatages (M08), et réentraîner :
+
+- **les trois modèles supervisés A, B, C** avec la configuration figée (profondeur 6,
+  100 arbres, M24), sans nouvelle recherche d'hyperparamètres ;
+- **les trois modèles non supervisés** : Isolation Forest, autoencodeur moyen et
+  autoencodeur petit, mêmes hyperparamètres, même calibration en 5 blocs de temps,
+  mêmes budgets. Argument de l'auteur : un TTL de 254 face à des normaux à 31 est une
+  anomalie triviale, donc le raccourci vaut aussi pour eux.
+
+**Colonnes retirées** (numéros du fichier features) : `sttl` (10), `dttl` (11),
+`ct_state_ttl` (37, décrite dans le fichier features comme le nombre de connexions par
+état selon des plages de TTL source et destination, donc dérivée de l'état et des
+TTL). Il reste **38 features**, contre 41.
+
+**Rapport** : les deux versions **côte à côte, avec et sans TTL**. Ce n'est pas une
+correction : c'est une mesure de ce que le banc d'essai offre comme raccourci, et elle
+ira dans le README comme résultat.
+
+Ce qui ne change pas : lignes des jeux (les jeux A, B, C, unsup et test contiennent
+exactement les mêmes lignes ; le tirage de B ne dépend pas des colonnes), graines,
+découpage temporel, déduplication, budgets 1 % / 0,1 % (référence) / 0,01 %. Ce qui
+change mécaniquement : la liste des colonnes log1p (recalculée par jeu sur l'entraînement,
+les colonnes TTL en moins), la dimension d'entrée des autoencodeurs, et le marquage des
+jumeaux (défini sur les features, donc sur 38 colonnes : davantage de lignes peuvent
+avoir un jumeau).
+
+**Ce qui n'est pas retiré, et n'est pas déclaré ici** : les autres colonnes qui pourraient
+porter un artefact du banc d'essai (compteurs `ct_*`, protocole `arp`, service `-`,
+apparus dans l'importance des variables de M24). Une éventuelle seconde ablation serait
+une nouvelle décision, à déclarer avant d'être lancée.
+
+Exécution prévue (jeux et résultats dans `data/processed_sans_ttl/`) :
+
+    venv/bin/python src/prepare.py --config config_sans_ttl.toml
+    venv/bin/python src/verify_prepare.py --config config_sans_ttl.toml
+    venv/bin/python src/models/isolation_forest.py --config config_sans_ttl.toml
+    venv/bin/python src/models/supervised.py --config config_sans_ttl.toml --skip-tuning
+    venv/bin/python src/models/autoencoder.py --config config_sans_ttl.toml
+
+### 2. Intervalles sur les écarts B − C par rééchantillonnage apparié
+
+**Décision de l'auteur** : intervalles sur les écarts B − C par rééchantillonnage
+**apparié** (mêmes lignes de test pour les deux conditions), **sur Reconnaissance à
+0,01 % en priorité** (« le résultat central »).
+
+**Vérification préalable des données** (répartition des lignes de test dans le temps ;
+test : 1 023 196 lignes sur 756 minutes) :
+
+- blocs de 5 minutes : 150 blocs non vides ; les 1 740 lignes de Reconnaissance tombent
+  dans **24 blocs** (le plus chargé en contient 4,8 %, les trois plus chargés 14,3 %) ;
+  celles d'Exploits (4 042) dans 24 blocs (8,7 % ; 17,7 %) ;
+- blocs de 10 minutes : 76 blocs ; Reconnaissance dans **12 blocs** (9,4 % ; 27,8 %),
+  Exploits dans 12 blocs (13,1 % ; 30,9 %) ;
+- blocs de 30 minutes : 26 blocs ; les deux familles dans 4 blocs seulement.
+
+**Les attaques du test arrivent en quelques rafales** : le nombre d'observations
+indépendantes pour le rappel d'une famille est de l'ordre de la dizaine de blocs, pas de
+1 740 ou 4 042 lignes. **Les intervalles de Wilson consignés jusqu'ici (M09, M16, M20,
+M24), qui supposent des lignes indépendantes, sont donc beaucoup trop étroits pour les
+rappels par famille.** Le rééchantillonnage par blocs de temps est nécessaire.
+
+**Méthode déclarée** (`src/paired_bootstrap.py`) :
+
+- **Rééchantillonnage apparié par blocs de temps** : on tire, avec remise, des blocs de
+  temps contigus du test ; les deux conditions comparées sont évaluées sur les mêmes
+  lignes tirées. **Variante principale : blocs de 10 minutes.** Sensibilité : blocs de
+  5 minutes, et rééchantillonnage des lignes une à une (indépendance supposée, montré
+  pour mesurer de combien elle sous-estime l'incertitude). 1 000 réplications, graine
+  42, intervalle à 95 % par percentiles.
+- **Grandeur** : écart de rappel en points de pourcentage, pour Exploits et
+  Reconnaissance, A − B (volume) et B − C (famille inédite), à 1 %, 0,1 % et 0,01 %.
+  **Deux points de fonctionnement** : au **même taux lu sur le test** (le seuil de chaque
+  condition est recalculé à chaque réplication sur les normaux tirés), et au **seuil
+  calibré** (seuils fixes de la calibration).
+- **Variante sans jumeau** : pour Reconnaissance, écartement des lignes de test ayant un
+  jumeau dans B ou dans C, pour que la contamination (M11, M24) ne joue pas.
+- Appliqué aux **deux versions**, avec et sans TTL.
+

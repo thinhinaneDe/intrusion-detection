@@ -1,0 +1,22 @@
+# Ablation TTL (M25) : mêmes données, mêmes lignes, mêmes graines, même découpage, mêmes
+# hyperparamètres ; seules diffèrent les colonnes données au modèle. Déclaré et
+# committé AVANT tout résultat sans TTL, comme l'exclusion des IP et des horodatages.
+extends = "config.toml"
+
+[data]
+# Jeux et résultats séparés de ceux de la version complète.
+processed_dir = "data/processed_sans_ttl"
+
+[features]
+# Les six colonnes d'identité et d'horodatage de config.toml, plus les trois colonnes
+# TTL : sttl (colonne 10), dttl (11) et ct_state_ttl (37, dérivée de l'état et des TTL
+# source et destination d'après le fichier features). 38 features numériques ou
+# nominales restent, contre 41. Une liste remplace celle de la configuration de base :
+# elle doit être complète.
+excluded = ["srcip", "sport", "dstip", "dsport", "Stime", "Ltime",
+            "sttl", "dttl", "ct_state_ttl"]
+
+[supervised]
+# Configuration figée par la recherche du jeu complet (profondeur 6, 100 arbres) ; pas
+# de nouvelle recherche, pour que les deux versions ne diffèrent que par les colonnes.
+search_file = "data/processed/results/supervised_search.json"

@@ -41,10 +41,27 @@ BOM = b"\xef\xbb\xbf"
 SET_NAMES = ["unsup", "A", "B", "C"]
 
 
+def _merge(base: dict, override: dict) -> dict:
+    """Fusion récursive : les tables se fusionnent, les valeurs et listes se remplacent."""
+    out = dict(base)
+    for k, v in override.items():
+        out[k] = _merge(base[k], v) if isinstance(v, dict) and isinstance(base.get(k), dict) else v
+    return out
+
+
 def load_config(path: Path) -> dict:
-    """Lit le fichier de configuration TOML."""
+    """Lit un fichier de configuration TOML.
+
+    Une clé racine `extends = "autre.toml"` (chemin relatif au fichier) hérite de
+    cette configuration de base : seules les différences sont écrites (ex. l'ablation
+    des colonnes TTL, `config_sans_ttl.toml`).
+    """
     with path.open("rb") as f:
-        return tomllib.load(f)
+        cfg = tomllib.load(f)
+    if "extends" in cfg:
+        base = load_config(path.parent / cfg.pop("extends"))
+        cfg = _merge(base, cfg)
+    return cfg
 
 
 def feature_names(path: Path) -> list[str]:

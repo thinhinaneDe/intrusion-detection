@@ -260,7 +260,9 @@ def main() -> None:
     search_path = out / "results" / "supervised_search.json"
 
     if args.skip_tuning:
-        search = json.loads(search_path.read_text())
+        # `search_file` : configuration retenue ailleurs (ablation TTL : figée depuis la
+        # recherche du jeu complet, sans nouvelle recherche).
+        search = json.loads(Path(cfg["supervised"].get("search_file", search_path)).read_text())
     else:
         scfg = cfg["supervised"]
         print(f"Recherche d'hyperparamètres sur les données de C : {len(grid_configs(scfg))} "
