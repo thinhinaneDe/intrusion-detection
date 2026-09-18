@@ -1305,3 +1305,108 @@ l'autoencodeur si le repli sur l'option 1 est nécessaire.
 - Intervalles de confiance : indépendance des lignes supposée (optimiste, M09).
 - Aucune valeur de score, de seuil ou de rappel ci-dessus n'est estimée ; toutes
   proviennent de la commande citée.
+
+---
+
+## M17 — Normaux du jour 2 contre normaux du jour 1 : d'où vient la queue (2026-09-18)
+
+Question de l'auteur : la queue plus lourde des scores des normaux du jour 2
+(M16) casse la calibration ; quelles colonnes diffèrent entre les deux jours, et
+cela se rattache-t-il à quelque chose d'identifiable (protocole, service,
+durée) ? Mesure, sans spéculation. Les normaux du test servent ici à décrire une
+différence entre les jours, pas à régler un modèle ni un seuil. Commande :
+
+    venv/bin/python src/inspect_normals.py
+
+Normaux : 950 853 au jour 2, 1 008 918 au jour 1. Seuil de queue : quantile 99 %
+des scores hors échantillon du jour 2 (0,6190, M16) ; dépassements : **9 509
+flux au jour 2 (1,000 %), 1 162 au jour 1 (0,115 %)**.
+
+### Ce qui diffère sur l'ensemble des normaux
+
+- **Colonnes nominales** (distance de variation totale entre les deux jours) :
+  proto 0,0139 (tcp 70,45 % contre 71,84 %, udp 29,00 % contre 27,67 %) ; state
+  0,0242 ; service 0,0434. Écart le plus net : **state INT 2,689 % au jour 2
+  contre 0,533 % au jour 1**, REQ 0,386 % contre 0,199 %, RST 0,046 % contre
+  0,007 %, ECO 0,031 % contre 0,001 % ; service `-` 54,82 % contre 59,16 %, dns
+  20,00 % contre 17,46 %.
+- **Colonnes numériques**, statistique de Kolmogorov-Smirnov (0 = identiques) :
+  seulement **6 colonnes sur 38 dépassent 0,1, aucune ne dépasse 0,3**. Dans
+  l'ordre : ct_dst_src_ltm 0,213 (médiane 2 contre 1, quantile 99 % 28 contre 7) ;
+  ackdat 0,212 ; ct_srv_dst 0,149 ; ct_srv_src 0,139 ; Sintpkt 0,121 ; Dintpkt
+  0,106. Suivent tcprtt 0,094 et synack 0,061. Au centre les distributions se
+  ressemblent ; l'écart est dans les queues : quantile 99 % de ackdat 0,0851
+  contre 0,000992 (86 fois), tcprtt 0,185 contre 0,0031 (60 fois), synack 0,0986
+  contre 0,0022 (45 fois), Sload 2,64·10⁸ contre 1,36·10⁷, sttl 254 contre 31,
+  dttl 252 contre 29. Durée `dur` : KS 0,039, médianes 0,02591 s et 0,02592 s.
+
+### Ce qui fournit les dépassements
+
+Dix combinaisons (proto, état, service) fournissent **98,5 % des dépassements du
+jour 2**. Lignes du jour 2 → dépassements (taux) contre lignes du jour 1 →
+dépassements (taux) :
+
+- (udp, INT, dns) : 17 985 → 2 624 (14,59 %) contre 2 564 → **0 (0,00 %)** ;
+- (tcp, CON, `-`) : 4 418 → 2 054 (46,49 %) contre 5 622 → 356 (6,33 %) ;
+- (udp, INT, `-`) : 6 117 → 1 880 (30,73 %) contre 1 359 → 228 (16,78 %) ;
+- (ospf, REQ, `-`) : 1 362 → 1 045 (76,73 %) contre 1 520 → 11 (0,72 %) ;
+- (arp, CON, `-`) : 2 021 → 603 (29,84 %) contre 1 881 → 28 (1,49 %) ;
+- (tcp, REQ, `-`) : 2 158 → 582 (26,97 %) contre 451 → 0 ;
+- (arp, INT, `-`) : 1 354 → 96 (7,09 %) contre 1 402 → 68 (4,85 %) ;
+- (tcp, RST, ssh) : 60 → 51 contre 10 → 10.
+
+Par catégorie isolée : **state INT** fournit 4 637 des 9 509 dépassements du
+jour 2 (48,8 %) avec un taux de 18,14 % (contre 5,53 % au jour 1) ; REQ 1 677
+(taux 45,68 % contre 0,75 %) ; CON 2 666 (1,03 % contre 0,14 %) ; FIN 475
+(0,07 % contre 0,06 %). Par protocole : udp 1,65 % contre 0,08 % ; tcp 0,47 %
+contre 0,11 % ; ospf 76,24 % contre 0,71 % ; arp 20,71 % contre 2,92 %. Par
+service : dns 1,38 % contre **0,00 %** ; `-` 1,25 % contre 0,15 %.
+
+Le trafic ordinaire a la même queue les deux jours : (tcp, FIN, http) 0,27 %
+contre 0,26 %, (tcp, FIN, `-`) 0,04 % des deux côtés. L'excédent du jour 2 ne
+vient pas de là.
+
+### Ce qui distingue ces flux d'un jour à l'autre, à catégorie égale
+
+- **state = INT** (25 569 lignes au jour 2, 5 375 au jour 1) : ce sont les
+  compteurs de contexte `ct_*` qui diffèrent le plus. ct_dst_src_ltm KS 0,743
+  (médiane **22 contre 2**, quantile 99 % 54 contre 13) ; ct_srv_dst 0,599
+  (22 contre 6) ; ct_dst_sport_ltm 0,598 (7 contre 2) ; ct_srv_src 0,591 ;
+  ct_src_ltm 0,581 (10 contre 2) ; ct_src_dport_ltm 0,579 (9 contre 2).
+- **service = dns** (190 189 lignes au jour 2, 176 105 au jour 1) : Sintpkt KS
+  0,562 (médianes 0,008 et 0,010, quantiles 99 % 0,018 et 0,021), Dintpkt 0,467,
+  ct_dst_src_ltm 0,302 (quantile 99 % 42 contre 5), dur 0,156, Sload 0,142
+  (quantile 99 % 5,28·10⁸ contre 1,17·10⁸).
+- Parmi les flux en dépassement du jour 2, les médianes sont : ct_dst_src_ltm 12
+  (contre 2 pour tous), Sintpkt 60,2 (contre 0,73), et **ackdat, tcprtt, synack
+  = 0** : les flux de la queue n'ont pas de mesure de handshake. Les grandes
+  valeurs de ackdat, tcprtt, synack au jour 2 (quantiles 99 % ci-dessus) sont
+  donc une autre différence entre les jours, qui n'explique pas la queue des
+  scores.
+
+### Dans le temps
+
+- Jour 2 : des dépassements **à chaque heure**, entre 0,5 % et 1,7 % des
+  normaux de l'heure. Pas de rafale unique.
+- Jour 1 : 909 des 1 162 dépassements (78 %) tombent dans deux heures, 12 h UTC
+  (520, 0,6 %) et 16 h UTC (389, 0,4 %) ; les autres heures sont à 0,0 %–0,1 %.
+
+### Lecture
+
+Mesuré : la queue plus lourde du jour 2 est concentrée dans des flux **sans
+réponse ou à peine répondus** (état INT et REQ, ou CON avec service `-`) sur
+udp (dns compris), ospf et arp. Le jour 2 en contient plus (INT : 2,689 % contre
+0,533 % ; udp/INT/dns : 17 985 lignes contre 2 564) et, à catégorie égale, ils
+apparaissent avec des compteurs de contexte `ct_*` beaucoup plus élevés
+(médiane de ct_dst_src_ltm 22 contre 2 pour INT), c'est-à-dire au milieu de
+séries denses de connexions. Les flux normaux du jour 1 de ces mêmes catégories
+sont plus rares et plus isolés, et ne dépassent presque jamais le seuil.
+
+Non établi : la cause de cette différence de densité (génération du trafic,
+configuration du banc de test), et si ces flux du jour 2 sont réellement
+normaux ou du bruit d'étiquetage. Seul ce qui a été mesuré va dans le README.
+
+Conséquence pour le protocole : la calibration jour 2 → jour 1 est
+conservatrice parce que les normaux du jour 2 contiennent une population de
+flux INT/REQ denses absente du jour 1. Elle n'est pas due à une dérive de
+l'ensemble des colonnes (6 colonnes sur 38 avec KS > 0,1).
