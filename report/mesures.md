@@ -909,3 +909,102 @@ mesure la plus propre de l'effet de la famille inédite. Non tranché ici.
   de lignes : 170760787752572768).
 - **Découpage étanche** : `Stime` minimal de l'entraînement ≥ 2015-02-18 00:00
   UTC > `Stime` maximal du test (vérifié à chaque exécution).
+
+---
+
+## M12 — Asymétrie des features numériques et seuil pour log1p (2026-09-18)
+
+### Décision de l'auteur
+
+Appliquer `log1p` aux colonnes à queue lourde **avant** le scaler, avec un
+critère de sélection mesuré (asymétrie) et non une liste écrite à la main. Le
+seuil est proposé par l'assistant (ci-dessous) ; l'auteur ne l'a pas encore
+validé. Motif de l'auteur : un autoencodeur entraîné sur des valeurs allant
+jusqu'à 6 milliards reconstruirait surtout les colonnes à grande échelle.
+
+L'implémentation dans `prepare.py` et ses contrôles sont en M13.
+
+### Mesure
+
+Commande :
+
+    venv/bin/python src/inspect_skew.py
+
+Asymétrie (skewness) de chacune des 38 features numériques, calculée **sur les
+jeux d'entraînement seuls, jamais sur le test**. Le choix des colonnes est un
+paramètre ajusté, comme la moyenne d'un scaler. Toutes les colonnes ont un
+minimum ≥ 0 (les compteurs `ct_*` ≥ 1), donc log1p est défini partout.
+
+Asymétrie brute, jeu A, par ordre décroissant : trans_depth 180,2 ; sbytes
+101,5 ; sloss 92,0 ; Sjit 47,5 ; Spkts 33,1 ; ackdat 31,7 ; synack 29,9 ; Djit
+28,8 ; Dintpkt 28,2 ; is_sm_ips_ports 27,8 ; tcprtt 24,2 ; res_bdy_len 23,2 ;
+Sintpkt 21,1 ; Sload 16,5 ; ct_flw_http_mthd 13,0 ; dloss 11,3 ; dur 11,3 ;
+dbytes 10,6 ; Dpkts 10,1 ; is_ftp_login 7,7 ; ct_ftp_cmd 7,7 ;
+ct_src_dport_ltm 7,4 ; ct_dst_sport_ltm 7,3 ; ct_dst_src_ltm 5,2 ; ct_dst_ltm
+5,2 ; ct_state_ttl 4,6 ; ct_src_ltm 4,4 ; ct_srv_dst 4,0 ; ct_srv_src 3,8 ;
+smeansz 3,4 ; dttl 3,4 ; sttl 2,8 ; **Dload 1,75** ; dmeansz 1,2 ; stcpb 0,45 ;
+dtcpb 0,45 ; dwin −0,81 ; swin −0,82.
+
+Les valeurs décroissent presque sans saut : il n'y a pas de coupure naturelle
+unique. Deux constats décident de la position du seuil :
+
+1. **Stabilité entre les jeux.** Pour tout seuil entre 1,75 et 2,77, la liste de
+   colonnes est identique dans les quatre jeux (unsup, A, B, C). La borne basse
+   est l'asymétrie de `Dload` (1,62 à 1,75 selon le jeu), la borne haute celle de
+   `sttl` (2,77 dans A). Aux seuils 3, 5 et 10, les listes diffèrent d'un jeu à
+   l'autre, ce qui ferait varier le prétraitement entre B et C pour une raison
+   étrangère à la famille retirée. Nombre de colonnes au-dessus : seuil 1 → 34
+   (identique dans les 4 jeux) ; seuil 2 → 32 (identique) ; seuil 3 → 31 ou 32 ;
+   seuil 5 → 25 ou 26 ; seuil 10 → 14 à 19.
+2. **Sur-correction sous le seuil.** Sur `Dload` (1,75) et `dmeansz` (1,2),
+   log1p ferait passer l'asymétrie à −1,82 et −1,44 : plus loin de zéro qu'avant.
+
+**Seuil proposé : 2** (`log1p_skew_threshold`), au milieu de l'intervalle
+[1,75 ; 2,77]. Il sélectionne **32 colonnes**, les mêmes dans les quatre jeux :
+dur, sbytes, dbytes, sttl, dttl, sloss, dloss, Sload, Spkts, Dpkts, smeansz,
+trans_depth, res_bdy_len, Sjit, Djit, Sintpkt, Dintpkt, tcprtt, synack, ackdat,
+is_sm_ips_ports, ct_state_ttl, ct_flw_http_mthd, is_ftp_login, ct_ftp_cmd,
+ct_srv_src, ct_srv_dst, ct_dst_ltm, ct_src_ltm, ct_src_dport_ltm,
+ct_dst_sport_ltm, ct_dst_src_ltm. Restent sans log1p : Dload, dmeansz, stcpb,
+dtcpb, swin, dwin. Le critère est mécanique ; l'auteur peut le remplacer en
+changeant une valeur dans `config.toml`.
+
+Deux remarques sur ce critère :
+
+- `is_sm_ips_ports` (2 modalités) est sélectionnée par sa forte asymétrie ;
+  log1p sur une colonne à valeurs {0, 1} est une transformation affine, sans
+  effet une fois le scaler appliqué. Inoffensif, non retiré.
+- L'asymétrie brute dépend beaucoup du jeu pour certaines colonnes : `trans_depth`
+  vaut 2,97 (unsup) et 2,99 (C) contre 180,2 (A) et 183,7 (B). Les valeurs
+  extrêmes de cette colonne se trouvent donc dans des lignes d'Exploits ou de
+  Reconnaissance, absentes de C et de unsup. C'est une illustration mesurée de
+  la raison pour laquelle le préprocesseur est ajusté jeu par jeu. Ici la
+  sélection reste la même (2,97 > 2).
+
+### Effet sur l'échelle (jeu de l'autoencodeur, normaux du jour 2 seuls)
+
+Plus grande valeur standardisée |z| par colonne, avant puis après log1p, sur
+les 32 colonnes sélectionnées : **maximum 166,1 → 78,8 ; médiane des maxima
+21,3 → 5,6.**
+
+- Les colonnes les plus étendues avant log1p : ackdat 166,1 ; Djit 162,4 ;
+  tcprtt 158,1 ; sbytes 146,1 ; synack 124,3 ; Sjit 109,7 ; Sload 75,3 ; sloss
+  55,8 ; ct_flw_http_mthd 45,5 ; Dintpkt 43,8.
+- Après log1p : ackdat 78,8 ; Djit 3,6 ; tcprtt 57,9 ; sbytes 4,7 ; synack
+  66,3 ; Sjit 3,4 ; Sload 5,6 ; sloss 4,5 ; ct_flw_http_mthd 13,1 ; Dintpkt 6,3.
+
+Deux enseignements, qui nuancent le motif initial :
+
+- **Sload n'est pas la colonne dominante** une fois les valeurs standardisées
+  sur les normaux : |z| max de 75,3, derrière ackdat, Djit, tcprtt, sbytes,
+  synack et Sjit. Le mécanisme invoqué (queues lourdes qui tirent
+  l'apprentissage) est bien mesuré ; la colonne citée n'est pas la pire.
+- **log1p corrige mal `ackdat`, `tcprtt` et `synack`** : leur |z| max reste à
+  78,8, 57,9 et 66,3, et leur asymétrie de 31,7, 24,2 et 29,9 (jeu A) ne tombe
+  qu'à 14,7, 10,0 et 14,7. Ces colonnes sont des durées en secondes dont le
+  maximum est de l'ordre de 5 à 10 : hypothèse (non mesurée) : leurs valeurs
+  typiques sont très inférieures à 1, domaine où log1p(x) ≈ x et où la
+  transformation ne comprime presque rien. Une autre transformation (par exemple
+  log(x + ε) avec ε calé sur l'entraînement, ou une mise à l'échelle par la
+  valeur positive médiane avant log) réglerait peut-être cela ; non décidé, non
+  implémenté, car l'auteur a demandé log1p.
