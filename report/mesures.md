@@ -1734,3 +1734,67 @@ calibration jour 2 → jour 1 (voir ci-dessous).
   calibration comparable ; le taux observé, pas le taux visé, est ce qui décide
   du déploiement. À reprendre dans le README (limites) : calibration sous dérive
   temporelle.
+
+---
+
+## M21 — Résultat : la calibration s'effondre d'autant plus que le modèle épouse les normaux d'entraînement (2026-09-18)
+
+Décision de l'auteur : consigner explicitement comme **résultat**, non comme note
+technique, ce qui ressort de M16 et M20. Aucune nouvelle exécution : les chiffres
+viennent des quantiles déjà consignés.
+
+### Le constat
+
+Rapport entre le quantile 99 % des scores des normaux **du test** et celui des
+scores **hors échantillon** des normaux du jour 2 (la calibration) :
+
+- Isolation Forest : **0,95** (0,5882 / 0,6190) ;
+- autoencodeur petit : **2,46** (0,6007 / 0,2440) ;
+- autoencodeur moyen : **12,0** (0,1875 / 0,0156).
+
+Conséquence sur le taux de faux positifs observé pour un budget de 1 % : 0,12 %
+(Isolation Forest), 2,46 % (petit), 6,97 % (moyen). Plus un modèle épouse le
+trafic normal d'entraînement, plus sa calibration s'effondre sur du trafic
+normal qu'il n'a pas vu. Le seuil déployable calibré sur le jour 2 ne tient pas
+sur le jour 1 pour les modèles qui collent le plus au jour 2.
+
+### Indicateur de fidélité sur une échelle commune
+
+La fidélité de reconstruction n'est mesurée que pour les autoencodeurs (erreur
+hors échantillon : moyen 0,00110, petit 0,03476, soit 31,6 fois). L'Isolation
+Forest ne reconstruit rien. Un indicateur commun aux trois : le rapport entre le
+quantile 99 % des scores d'un modèle sur ses propres normaux d'entraînement et
+celui des scores hors échantillon (arithmétique sur les quantiles de M16 et
+M20). Plus il est bas, plus le modèle note mieux ce qu'il a vu que ce qu'il n'a
+pas vu, sur le même jour :
+
+- Isolation Forest **0,993** (0,6145 / 0,6190) ;
+- petit **0,871** (0,2126 / 0,2440) ;
+- moyen **0,686** (0,0107 / 0,0156).
+
+Cet ordre est celui du rapport de calibration ci-dessus (0,95 ; 2,46 ; 12,0).
+
+### Ce que cela établit, et ce que cela n'établit pas
+
+- **Trois points, pas une loi.** Trois modèles, une seule expérience, un seul
+  découpage temporel.
+- **Les trois modèles diffèrent par plus d'un facteur** : l'Isolation Forest est
+  d'une autre famille (arbres d'isolement, sous-échantillons de 256 lignes) ; sa
+  position sur l'axe « fidélité » n'est pas mesurée par la même grandeur que celle
+  des autoencodeurs, seulement par l'indicateur commun ci-dessus.
+- **Le contraste le plus propre est entre les deux autoencodeurs** : même famille,
+  même perte, mêmes données, un seul facteur qui change (la capacité, 5 024
+  contre 33 224 paramètres). Le rapport de calibration passe de 2,46 à 12,0.
+- **Non testé** : une gradation de la capacité ou du nombre d'epochs, qui dirait
+  si le rapport de calibration est monotone en la fidélité. Sans cela, le lien
+  avec la fidélité reste une association observée sur trois points.
+- Cela recoupe M17 : les normaux du jour 2 et du jour 1 diffèrent surtout dans les
+  queues (flux INT/REQ denses), donc un modèle qui apprend finement le jour 2 note
+  mal ces différences.
+
+### À reprendre dans le README
+
+Section limites : la calibration d'un seuil sur un jour ne se transfère pas à
+un autre jour ; le budget de faux positifs visé est une cible, pas une garantie ;
+c'est le taux observé qui décide du déploiement. Rapporter les trois rapports
+(0,95 ; 2,46 ; 12,0), présentés comme trois observations et non comme une loi.
