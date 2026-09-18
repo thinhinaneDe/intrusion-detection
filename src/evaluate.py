@@ -35,7 +35,7 @@ def wilson(p: float, n: int, alpha: float = 0.05) -> tuple[float, float]:
     denom = 1 + z * z / n
     center = (p + z * z / (2 * n)) / denom
     half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return float(center - half), float(center + half)
+    return float(max(0.0, center - half)), float(min(1.0, center + half))
 
 
 def row_hashes(df: pd.DataFrame, cols: list[str]) -> np.ndarray:
@@ -140,6 +140,14 @@ def evaluate_scores(y_true, family, scores, calibration_scores, budgets, stime,
         hourly = pd.Series((stime[fp] // 3600).astype(np.int64)).value_counts()
         fpr, fpr_lo, fpr_hi = _rate(int(fp.sum()), int(normal.sum()), alpha)
         rec, rec_lo, rec_hi = _rate(int((alert & attack).sum()), int(attack.sum()), alpha)
+        tp, n_fp = int((alert & attack).sum()), int(fp.sum())
+        # Point de fonctionnement lu sur le test : seuil au même taux de faux
+        # positifs que le budget, mais mesuré sur les normaux du TEST. Borne
+        # haute non déployable (elle utilise les étiquettes du test) ; sert à
+        # comparer des modèles indépendamment de la qualité de leur calibration.
+        t_m = threshold_for_fpr(scores[normal], b)
+        alert_m = scores > t_m
+        rec_m, rec_m_lo, rec_m_hi = _rate(int((alert_m & attack).sum()), int(attack.sum()), alpha)
         out["budgets"][str(b)] = {
             "fpr_target": b, "threshold": t,
             "fpr_calibration": float((calibration_scores > t).mean()),
@@ -148,8 +156,15 @@ def evaluate_scores(y_true, family, scores, calibration_scores, budgets, stime,
             "false_alerts_per_hour_mean": float(fp.sum() / span_h),
             "false_alerts_max_hour": int(hourly.max()) if len(hourly) else 0,
             "recall": rec, "recall_lo": rec_lo, "recall_hi": rec_hi,
+            "precision": tp / (tp + n_fp) if tp + n_fp else np.nan,
+            "confusion": {"tp": tp, "fp": n_fp, "fn": int(attack.sum()) - tp,
+                          "tn": int(normal.sum()) - n_fp},
             "by_family": recall_by_family(family, y_true, alert, has_twin, alpha)
             .to_dict(orient="records"),
+            "matched": {"threshold": t_m, "fpr_test": float((alert_m & normal).sum() / normal.sum()),
+                        "recall": rec_m, "recall_lo": rec_m_lo, "recall_hi": rec_m_hi,
+                        "by_family": recall_by_family(family, y_true, alert_m, has_twin, alpha)
+                        .to_dict(orient="records")},
         }
     return out
 
@@ -173,6 +188,24 @@ def print_report(res: dict, reference: float) -> None:
               f"{b['false_alerts_per_hour_mean']:.1f} fausses alertes/h en moyenne, "
               f"{b['false_alerts_max_hour']} la pire heure) ; "
               f"rappel {_pct(b['recall'])} [{_pct(b['recall_lo'])} ; {_pct(b['recall_hi'])}]")
+        c = b["confusion"]
+        print(f"      matrice de confusion : VP {c['tp']}, FP {c['fp']}, FN {c['fn']}, VN {c['tn']} ; "
+              f"précision {_pct(b['precision'])}")
+    print("\nRappel au même taux de faux positifs LU SUR LE TEST (borne haute non déployable, "
+          "pour comparer les modèles hors calibration) :")
+    for key, b in res["budgets"].items():
+        m = b["matched"]
+        print(f"  taux {_pct(b['fpr_target'], 3)} : seuil {m['threshold']:.4f} ; "
+              f"rappel {_pct(m['recall'])} [{_pct(m['recall_lo'])} ; {_pct(m['recall_hi'])}]")
+    print("\nRappel par famille au même taux lu sur le test (mêmes budgets que ci-dessus) :")
+    fams = [r["family"] for r in next(iter(res["budgets"].values()))["matched"]["by_family"]]
+    for i, fam in enumerate(fams):
+        cells = []
+        for b in res["budgets"].values():
+            r = b["matched"]["by_family"][i]
+            cells.append(f"{_pct(b['fpr_target'], 3)} : {_pct(r['recall'])}")
+        n = next(iter(res["budgets"].values()))["matched"]["by_family"][i]["n"]
+        print(f"  {fam:15s} n={n:5d}  " + "  |  ".join(cells))
     for key, b in res["budgets"].items():
         ref = " (budget de référence)" if b["fpr_target"] == reference else ""
         print(f"\nRappel par famille, budget {_pct(b['fpr_target'], 3)}{ref} :")
