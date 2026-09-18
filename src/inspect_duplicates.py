@@ -29,6 +29,8 @@ IDX_SRCIP, IDX_SPORT, IDX_DSTIP, IDX_DSPORT = 0, 1, 2, 3
 IDX_STCPB, IDX_DTCPB = 20, 21
 IDX_STIME, IDX_LTIME = 28, 29
 IDX_ATTACK_CAT = 47
+IDX_CT_FLW_HTTP_MTHD, IDX_IS_FTP_LOGIN, IDX_CT_FTP_CMD = 37, 38, 39
+BLANK_COLS = {IDX_CT_FLW_HTTP_MTHD, IDX_IS_FTP_LOGIN, IDX_CT_FTP_CMD}
 N_COLS = 49
 CAT_FIX = {"backdoor": "backdoors"}
 
@@ -101,6 +103,9 @@ def main() -> None:
     parser.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
     parser.add_argument("--day2-start", default="2015-02-18",
                         help="Date UTC (AAAA-MM-JJ) à partir de laquelle commence le jour 2")
+    parser.add_argument("--blank-as-zero", action="store_true",
+                        help="Compare les features (B, C) après avoir remplacé par 0 les blancs de "
+                             "ct_flw_http_mthd, is_ftp_login et ct_ftp_cmd (vides au jour 2 seulement)")
     args = parser.parse_args()
     day2_ts = datetime.strptime(args.day2_start, "%Y-%m-%d").replace(
         tzinfo=timezone.utc).timestamp()
@@ -120,6 +125,9 @@ def main() -> None:
 
         update(exact, digest(row), 0, day)
         features = row[:IDX_ATTACK_CAT]
+        if args.blank_as_zero:
+            features = [b"0" if i in BLANK_COLS and f.strip() == b"" else f
+                        for i, f in enumerate(features)]
         for table, (_, excluded) in zip(tables, VARIANTS):
             cols = [c for i, c in enumerate(features) if i not in excluded]
             update(table, digest(cols), bit, day)

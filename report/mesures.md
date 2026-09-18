@@ -723,3 +723,189 @@ Options pour isoler l'effet, à trancher par l'auteur :
 
 Recommandation : l'option 2 comme minimum, l'option 3 si le temps le permet.
 Ce n'est qu'une recommandation ; le choix appartient à l'auteur.
+
+---
+
+## M11 — Protocole à trois conditions, préparation des données et contrôles (2026-09-18)
+
+### Décisions de l'auteur (M05, M10 suite)
+
+Option 2 retenue : **trois conditions supervisées**, plus le non supervisé.
+
+- **A — témoin complet** : toutes les familles, 85 365 attaques.
+- **B — témoin à volume égal** : 50 191 attaques tirées au hasard
+  proportionnellement aux familles de A, toutes les familles présentes, graine
+  fixée (42, `config.toml`, section `sampling`).
+- **C — traitement** : Exploits et Reconnaissance retirés, 50 191 attaques.
+- **A − B** mesure l'effet du volume seul ; **B − C** mesure l'effet de la
+  famille inédite à volume constant : c'est ce second écart qui répond à la
+  question du projet.
+- L'option 3 (courbe d'apprentissage du témoin) est gardée pour la fin.
+- **Non supervisé** (autoencodeur et Isolation Forest) : entraînement sur les
+  950 853 normaux du jour 2 uniquement, aucune attaque d'aucune famille. Même
+  jeu de test que les trois conditions supervisées.
+
+### Préparation : `src/prepare.py`
+
+Commande (86 s, environ 4,5 Go de mémoire au pic) :
+
+    venv/bin/python src/prepare.py
+
+Configuration : `config.toml` (chemin, date de coupure, familles retirées,
+colonnes exclues, graine, seuil des modalités rares). Sorties dans
+`data/processed/` (gitignoré) : `train_{unsup,A,B,C}.parquet`, `test.parquet`,
+`preprocessor_{unsup,A,B,C}.joblib`, `manifest.json`.
+
+Lignes lues après retrait des 3 doublons de jonction : 2 540 044. Doublons
+exacts (49 colonnes) supprimés par côté après le découpage : entraînement
+416 624, test 64 006, identiques à M08.
+
+Effectifs écrits (attaques par famille) :
+
+- **unsup** : 950 853 lignes, tous normaux.
+- **A** : 1 036 218 lignes, dont 85 365 attaques : Analysis 1 883 ; Backdoors
+  1 684 ; DoS 4 840 ; Exploits 23 557 ; Fuzzers 17 804 ; Generic 22 545 ;
+  Reconnaissance 11 617 ; Shellcode 1 288 ; Worms 147.
+- **B** : 1 001 044 lignes, dont 50 191 attaques : Analysis 1 107 ; Backdoors
+  990 ; DoS 2 846 ; Exploits 13 851 ; Fuzzers 10 468 ; Generic 13 256 ;
+  Reconnaissance 6 830 ; Shellcode 757 ; Worms 86. Répartition par plus grands
+  restes, proportionnelle à A.
+- **C** : 1 001 044 lignes, dont 50 191 attaques : Analysis 1 883 ; Backdoors
+  1 684 ; DoS 4 840 ; Fuzzers 17 804 ; Generic 22 545 ; Shellcode 1 288 ;
+  Worms 147.
+- **Test** : 1 023 196 lignes, dont 14 278 attaques : Analysis 301 ; Backdoors
+  299 ; DoS 825 ; Exploits 4 042 ; Fuzzers 3 991 ; Generic 2 833 ;
+  Reconnaissance 1 740 ; Shellcode 223 ; Worms 24. Normaux : 1 008 918.
+
+Tous ces effectifs coïncident avec M09 et M10.
+
+Choix de préparation :
+
+- **Un préprocesseur par jeu, ajusté sur les seules lignes de ce jeu.** Un
+  préprocesseur commun, ajusté sur tout le jour 2, aurait emporté dans C les
+  statistiques des familles retirées, et dans le non supervisé celles des
+  attaques. Le test est transformé au chargement avec le préprocesseur du jeu
+  évalué (`load_set`).
+- **Encodage** : one-hot de `proto`, `state`, `service`, avec regroupement des
+  modalités de fréquence inférieure à 0,1 % de l'entraînement (`min_frequency =
+  0,001`) et envoi des modalités jamais vues dans ce groupe. **Valeur par défaut
+  à valider par l'auteur.** Motivation mesurée : `proto` a 134 modalités au
+  jour 2 dont la plupart sous 400 lignes ; `state` 14 au jour 2 et 16 au jour 1
+  (`CLO` et `URH` absentes du jour 2 : 269 lignes de test) ; `proto` a une
+  modalité (`esp`, 2 lignes de test) absente du jour 2 ; `service` : aucune.
+  Dimensions de X après encodage : 56 (unsup), 58 (A), 57 (B et C).
+- **Scaler** : `StandardScaler`, sans transformation logarithmique. Les colonnes
+  ont des queues très lourdes (Sload jusqu'à 5,99·10⁹, sbytes jusqu'à 1,4·10⁷).
+  Sans effet pour un gradient boosting, probablement important pour
+  l'autoencodeur : **décision de modélisation à prendre avant l'autoencodeur,
+  non prise ici.**
+- **Vides des trois colonnes `ct_flw_http_mthd`, `is_ftp_login`, `ct_ftp_cmd`
+  remplacés par 0** (voir ci-dessous).
+
+### Mesure : les vides de trois colonnes sont propres au jour 2
+
+Commande :
+
+    python3 src/inspect_columns.py
+
+Vides (jour 2 / jour 1) : `ct_flw_http_mthd` 1 348 143 / 0 ; `is_ftp_login`
+1 429 877 / 0 ; `ct_ftp_cmd` 1 429 877 / 0 (avant déduplication). Aucune valeur
+non numérique dans les 41 features.
+
+- Au jour 2, les valeurs renseignées de `is_ftp_login` et `ct_ftp_cmd` ne
+  valent jamais 0 (`is_ftp_login` : 1 → 22 779, 4 → 156, 2 → 30 ; `ct_ftp_cmd`
+  : mêmes effectifs) ; `ct_flw_http_mthd` : jamais 0 non plus parmi ses valeurs
+  les plus fréquentes (1, 4, 2, 9, 30, 16). Le jour 1 écrit 0 explicitement :
+  1 066 592 fois pour `is_ftp_login`, 986 790 fois pour `ct_flw_http_mthd`.
+- Au jour 2, chaque ligne a exactement l'un de ces cas : les trois vides
+  (1 325 178 lignes), `ct_flw_http_mthd` renseigné seul (104 699), ou les deux
+  colonnes FTP renseignées seules (22 965). Aucune ligne n'a les deux groupes
+  renseignés.
+
+Lecture : au jour 2, un blanc est un 0 écrit autrement (hypothèse cohérente
+avec toutes les observations, non prouvée par une documentation). Laisser des
+NaN ferait apprendre au modèle le jour d'entraînement. Le remplacement par 0
+aligne les deux jours.
+
+### Correction de M07 et M08 : le zéro recoupement entre jours était mécanique
+
+M07 annonçait « 0 combinaison présente aux deux jours » sur C et C′, et
+concluait à l'absence de copie comportementale entre entraînement et test. **Ce
+zéro était dû au format** : au jour 2 ces trois colonnes sont vides, au jour 1
+elles valent 0, donc deux lignes de comportement identique ne pouvaient jamais
+coïncider en comparaison textuelle. M07 relevait un zéro sans en avoir trouvé la
+cause (« n'a pas été cherché ») ; elle est maintenant identifiée.
+
+Contrôle : option `--blank-as-zero` ajoutée à `src/inspect_duplicates.py` (les
+blancs de ces trois colonnes deviennent 0 avant comparaison des features).
+Commande :
+
+    python3 src/inspect_duplicates.py --blank-as-zero
+
+Résultat, avant déduplication, sur C (41 colonnes) : **689 combinaisons
+présentes aux deux jours** (2 358 lignes du jour 1, 3 844 lignes du jour 2),
+dont 27 à étiquettes contradictoires. Sur B′ (45 colonnes, IP et ports
+conservés, sans horodatages) : 114 combinaisons (851 lignes du jour 1). Les
+contradictions de C changent aussi, parce que des lignes des deux jours se
+regroupent : 2 590 combinaisons et 42 322 lignes (au lieu de 2 579 et 42 282),
+dont normal contre attaque 463 combinaisons, 1 913 lignes (au lieu de 453 et
+1 879). Les chiffres de M07 correspondent à la comparaison textuelle brute ; ceux-ci à la
+comparaison après alignement des blancs, qui est celle des données réellement
+utilisées. Ces derniers sont ceux à retenir.
+
+Ce qui reste valable : les plafonds de M08 sont calculés côté par côté, or un
+blanc et un 0 ne coexistent jamais dans un même jour ; ils ne changent donc pas.
+Le zéro doublon exact entre jours sur les 49 colonnes (M06) reste vrai, car
+`Stime` en fait partie. Ce qui tombe : l'affirmation de M07 selon laquelle il n'y
+aurait aucune copie comportementale entre entraînement et test.
+
+### Mesure sur les données écrites : lignes de test avec un jumeau à l'entraînement
+
+Commande (contrôles d'intégrité, environ 1 min) :
+
+    venv/bin/python src/verify_prepare.py
+
+Après déduplication et alignement des blancs, sur les 41 features (sans
+`Stime`), nombre de lignes de test dont les features sont identiques à celles
+d'au moins une ligne du jeu d'entraînement :
+
+- unsup : 1 017 lignes ; A : 1 555 ; B : 1 503 ; C : 1 104.
+- **Reconnaissance, test (1 740 lignes) : 449 (25,80 %) ont un jumeau dans A,
+  415 (23,85 %) dans B, 1 (0,06 %) dans C.** Tous étiquetés attaque, donc de la
+  même étiquette binaire.
+- Generic : 68 sur 2 833 (2,40 %) dans A et C ; 53 dans B.
+- Exploits : 3 sur 4 042 (0,07 %) dans A ; 2 dans C.
+- Analysis 2, Backdoors 2, DoS 5 (3 dans C), Shellcode 2 : négligeable.
+- Fuzzers : 17 sur 3 991 dans A ; 10 d'entre elles ont un jumeau étiqueté
+  normal seulement (étiquette opposée), 2 un jumeau mixte, 5 un jumeau attaque.
+- Normal : 1 007 sur 1 008 918 (0,10 %) dans A, dont 3 avec jumeau attaque
+  seulement et 8 avec jumeau mixte.
+- Dans le jeu non supervisé, tous les jumeaux sont des normaux : 12 lignes
+  Fuzzers et 1 Shellcode du test y ont un jumeau normal (donc indétectables
+  par construction pour un modèle qui ne voit que ces normaux).
+
+Lecture : **le rappel de A et de B sur Reconnaissance est gonflé par la
+mémorisation** d'environ un quart des lignes de test (449 et 415 lignes qu'un
+arbre reconnaît par identité), ce que C ne peut pas faire puisque la famille
+est retirée. L'écart B − C sur Reconnaissance mélange donc « la famille est
+inédite » et « des copies exactes ont disparu ». Ce n'est pas une fuite du test
+vers l'entraînement au sens du scaler, mais c'est un biais de mesure à rapporter
+et à traiter (par exemple en mesurant aussi le rappel hors des lignes à
+jumeau). Exploits est quasi épargné (3 lignes sur 4 042), ce qui en fait la
+mesure la plus propre de l'effet de la famille inédite. Non tranché ici.
+
+### Contrôles d'intégrité de `verify_prepare.py`
+
+- **Scaler ajusté sur l'entraînement seul** : l'écart entre la moyenne du
+  scaler et la moyenne de l'entraînement est nul (0,000) pour les quatre jeux ;
+  l'écart relatif maximal avec la moyenne du test est de 0,66 (unsup), 0,82 (A),
+  0,78 (B), 0,79 (C).
+- **Imbrication** : B et C sont inclus dans A ; les quatre jeux ont les mêmes
+  normaux ; unsup ne contient aucune attaque ; C ne contient aucune famille
+  retirée.
+- **Chargement** : X sans NaN ni infini pour les quatre jeux.
+- **Reproductibilité** : deux exécutions successives de `prepare.py` donnent
+  un `manifest.json` identique et la même empreinte de B (somme des empreintes
+  de lignes : 170760787752572768).
+- **Découpage étanche** : `Stime` minimal de l'entraînement ≥ 2015-02-18 00:00
+  UTC > `Stime` maximal du test (vérifié à chaque exécution).

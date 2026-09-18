@@ -1,0 +1,43 @@
+# Configuration de la préparation des données (src/prepare.py).
+# Toute valeur qui influence un résultat est ici, pas dans le code.
+
+[data]
+raw_dir = "data/raw"
+processed_dir = "data/processed"
+csv_files = ["UNSW-NB15_1.csv", "UNSW-NB15_2.csv", "UNSW-NB15_3.csv", "UNSW-NB15_4.csv"]
+features_file = "NUSW-NB15_features.csv"
+
+[split]
+# Découpage temporel (M05) : Stime >= day2_start (UTC) -> entraînement (jour 2),
+# Stime < day2_start -> test (jour 1, 22-01 et 23-01).
+day2_start = "2015-02-18"
+
+[families]
+canonical = ["Normal", "Analysis", "Backdoors", "DoS", "Exploits", "Fuzzers",
+             "Generic", "Reconnaissance", "Shellcode", "Worms"]
+# Familles retirées de l'entraînement supervisé de la condition C (M10).
+removed = ["Exploits", "Reconnaissance"]
+
+# Clés en minuscules, après strip(). Backdoor et Backdoors sont une même famille
+# écrite de deux façons selon le lot d'étiquetage (M02, M05).
+[families.aliases]
+backdoor = "Backdoors"
+
+[features]
+# Identifiants et horodatages, exclus des features (M08). Stime sert au
+# découpage et reste dans les fichiers écrits comme métadonnée, pas comme feature.
+excluded = ["srcip", "sport", "dstip", "dsport", "Stime", "Ltime"]
+nominal = ["proto", "state", "service"]
+# Vides au jour 2 seulement, alors que le jour 1 écrit 0 explicitement (M11).
+blank_as_zero = ["ct_flw_http_mthd", "is_ftp_login", "ct_ftp_cmd"]
+
+[sampling]
+# Condition B : autant d'attaques que la condition C, tirées au hasard
+# proportionnellement aux familles de A (M10). Graine unique de tout le tirage.
+seed = 42
+
+[preprocessing]
+# Catégories dont la fréquence dans le jeu d'entraînement est inférieure à cette
+# fraction sont regroupées en une modalité « rare » ; les catégories jamais vues
+# à l'entraînement y sont aussi envoyées. Valeur par défaut à valider (M11).
+min_frequency = 0.001
