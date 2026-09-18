@@ -1120,3 +1120,41 @@ de leurs valeurs, car ces durées sont typiquement de l'ordre de 10⁻⁴ à 10�
 (par exemple log(x + ε) avec ε calé sur l'entraînement, ou une division par la
 médiane des valeurs non nulles avant le log) reste une piste identifiée, non
 traitée ni testée.
+
+---
+
+## M15 — Débit horaire des flux, pour chiffrer un budget de faux positifs (2026-09-18)
+
+Commande :
+
+    venv/bin/python src/inspect_debit.py
+
+Flux par heure UTC, d'après `Stime`, après déduplication.
+
+- **Test (jour 1)** : 1 023 196 flux du 2015-01-22 11:49 au 2015-01-23 00:25 UTC
+  (12,6 h), 14 heures avec des flux. Normaux par heure : médiane 79 548, maximum
+  94 753 (16 h), moyenne sur l'étendue 80 096. Les heures d'extrémité sont
+  partielles (13 486 à 11 h, 33 930 à 0 h) ; en dehors d'elles, le minimum est de
+  62 537 (19 h).
+- **Entraînement (jour 2)** : 1 036 218 flux du 2015-02-18 00:23 au 12:21 UTC
+  (12,0 h), 13 heures. Normaux par heure : médiane 81 786, maximum 87 372,
+  moyenne sur l'étendue 79 495.
+
+**Le débit réel est d'environ 80 000 flux normaux par heure**, soit huit fois
+les 10 000 flux/h de l'exemple du cahier des charges. Conversion (arithmétique
+sur ce débit) : un taux de faux positifs de 1 % donne environ 800 fausses
+alertes par heure ; 0,1 % environ 80 ; 0,01 % environ 8 ; 0,001 % environ 0,8.
+Avec l'exemple du cahier des charges (2 % de faux positifs), on aurait ici
+environ 1 600 fausses alertes par heure.
+
+### À reprendre dans le README (limites)
+
+- Le débit de ce jeu (environ 80 000 flux/h) est celui d'un banc d'essai
+  synthétique, pas d'un réseau réel ; les nombres d'alertes par heure sont à
+  lire avec cette réserve.
+- **Le sens du temps est inversé** : le test (22-23 janvier 2015) précède
+  l'entraînement (18 février 2015). Le modèle est entraîné sur le jour le plus
+  récent et évalué sur le plus ancien. Le découpage est temporel et évite la
+  fuite d'un tirage aléatoire, mais ne reproduit pas un déploiement réel, où
+  l'on entraîne sur le passé pour évaluer sur le futur. Décision prise pour des
+  raisons de volume (M05) ; à nommer comme limite.
