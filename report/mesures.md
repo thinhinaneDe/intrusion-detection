@@ -1008,3 +1008,56 @@ Deux enseignements, qui nuancent le motif initial :
   log(x + ε) avec ε calé sur l'entraînement, ou une mise à l'échelle par la
   valeur positive médiane avant log) réglerait peut-être cela ; non décidé, non
   implémenté, car l'auteur a demandé log1p.
+
+---
+
+## M13 — log1p avant le scaler, marquage des jumeaux : implémentation et contrôles (2026-09-18)
+
+### Implémentation
+
+- `config.toml`, section `preprocessing` : `log1p_skew_threshold = 2.0` (M12).
+- `src/prepare.py` : `select_log_columns` calcule l'asymétrie de chaque colonne
+  numérique **sur l'entraînement du jeu** et retient celles au-dessus du seuil ;
+  le préprocesseur de chaque jeu applique alors log1p puis `StandardScaler` à ces
+  colonnes, et `StandardScaler` seul aux autres. Une colonne sélectionnée qui
+  prendrait une valeur négative arrête l'exécution. `manifest.json` conserve,
+  par jeu, la liste `log1p_columns` et l'asymétrie brute de chaque colonne.
+- `src/evaluate.py` : `mark_twins` et `twin_flags` marquent chaque ligne du test
+  (`has_twin`, et `twin_kind` : none, attack, normal, mixed) selon qu'elle a un
+  jumeau exact (41 features, valeurs nettoyées, avant encodage) dans le jeu
+  d'entraînement évalué ; `recall_by_family` rapporte le rappel par famille
+  d'attaque, avec l'effectif et le rappel des lignes avec jumeau et sans jumeau.
+  Le marquage dépend du jeu (une ligne peut avoir un jumeau dans A et pas dans C).
+  Usage prévu : `recall_by_family(test.family, test.label, y_pred,
+  twin_flags("A")["has_twin"])`.
+
+### Contrôles
+
+Commandes :
+
+    venv/bin/python src/prepare.py
+    venv/bin/python src/verify_prepare.py
+
+- **Sélection** : 32 colonnes log1p dans chacun des quatre jeux, listes
+  identiques (contrôle du manifeste et du préprocesseur écrit), conformes à M12.
+- **Scaler ajusté sur l'entraînement seul** : écart nul (0,000) entre la moyenne
+  du scaler et la moyenne de l'entraînement transformé, pour les quatre jeux.
+  Écart relatif maximal avec la moyenne du test transformé : 0,64 (unsup), 0,82
+  (A), 0,77 (B), 0,76 (C).
+- **Imbrication** : inchangée (B et C dans A, mêmes normaux, unsup sans attaque,
+  C sans familles retirées).
+- **Jumeaux** : effectifs identiques à M11 (1 017 lignes de test avec jumeau
+  pour unsup, 1 555 pour A, 1 503 pour B, 1 104 pour C ; Reconnaissance : 449
+  dans A, 415 dans B, 1 dans C), ce qui est attendu puisque le marquage porte sur
+  les valeurs brutes nettoyées, avant log1p. L'empreinte de B est inchangée
+  (170760787752572768).
+- **Contrôle de `recall_by_family`** avec un prédicteur factice « mémoriseur »
+  (il signale une ligne si elle a un jumeau étiqueté attaque dans A) :
+  Reconnaissance, 1 740 lignes de test, dont 449 avec jumeau (rappel 1,000) et
+  1 291 sans jumeau (rappel 0,000). Ce contrôle vérifie la mécanique de
+  découpe ; ce n'est pas une performance.
+- **Chargement** : X sans NaN ni infini pour les quatre jeux, mêmes dimensions
+  qu'en M11 (56, 58, 57, 57 colonnes). Plus grande valeur absolue de X : sur
+  l'entraînement 78,8 (unsup), 69,9 (A), 72,9 (B), 74,5 (C) ; sur le test 44,0,
+  39,5, 41,0 et 41,6. Aucune valeur de test ne dépasse le maximum de
+  l'entraînement, pour aucun des quatre jeux.

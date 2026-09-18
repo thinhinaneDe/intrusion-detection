@@ -11,9 +11,11 @@
        B     : témoin à volume égal (autant d'attaques que C, tirées au hasard
                proportionnellement aux familles) ;
        C     : traitement, familles `removed` retirées ;
-  6. ajustement d'un préprocesseur (encodeur + scaler) PAR JEU, sur ses seules
-     lignes d'entraînement. Un ajustement commun emporterait dans C les
-     statistiques des familles retirées, et dans unsup celles des attaques.
+  6. ajustement d'un préprocesseur (encodeur, log1p sur les colonnes à queue
+     lourde, scaler) PAR JEU, sur ses seules lignes d'entraînement. Un
+     ajustement commun emporterait dans C les statistiques des familles
+     retirées, et dans unsup celles des attaques. La liste des colonnes log1p
+     est elle-même calculée sur l'entraînement du jeu (asymétrie > seuil).
 
 Le test n'est jamais passé à `fit`. Il est transformé au chargement (`load_set`)
 avec le préprocesseur du jeu évalué.
@@ -32,7 +34,8 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
 BOM = b"\xef\xbb\xbf"
 SET_NAMES = ["unsup", "A", "B", "C"]
@@ -149,14 +152,45 @@ def equal_volume_mask(train: pd.DataFrame, total: int, seed: int) -> pd.Series:
     return (train["label"] == 0) | train.index.isin(np.concatenate(chosen))
 
 
-def build_preprocessor(cfg: dict, columns: list[str]) -> ColumnTransformer:
-    """Encodeur one-hot des nominales (modalités rares regroupées) + StandardScaler du reste."""
+def select_log_columns(frame: pd.DataFrame, cfg: dict) -> tuple[list[str], dict[str, float]]:
+    """Colonnes numériques à transformer par log1p, et asymétrie brute de chacune.
+
+    Critère : asymétrie (skewness) de la colonne sur `frame`, qui doit être le
+    jeu d'entraînement seul, strictement supérieure à `log1p_skew_threshold`.
+    log1p n'est défini que pour x > -1 : une colonne sélectionnée qui prend une
+    valeur négative arrête l'exécution plutôt que de produire des NaN.
+    """
+    nominal = cfg["features"]["nominal"]
+    numeric = [c for c in frame.columns if c not in nominal]
+    skew = frame[numeric].skew()
+    selected = [c for c in numeric if skew[c] > cfg["preprocessing"]["log1p_skew_threshold"]]
+    negative = [c for c in selected if frame[c].min() < 0]
+    if negative:
+        raise SystemExit(f"log1p impossible, valeurs négatives dans : {negative}")
+    return selected, {c: round(float(skew[c]), 4) for c in numeric}
+
+
+def build_preprocessor(cfg: dict, columns: list[str], log_columns: list[str]) -> ColumnTransformer:
+    """Encodeur one-hot des nominales, puis [log1p +] StandardScaler des numériques.
+
+    Les colonnes de `log_columns` passent par log1p avant le scaler ; les autres
+    seulement par le scaler. Modalités rares et inconnues : voir `min_frequency`.
+    """
     nominal = cfg["features"]["nominal"]
     numeric = [c for c in columns if c not in nominal]
+    logged = [c for c in numeric if c in log_columns]
+    plain = [c for c in numeric if c not in log_columns]
     onehot = OneHotEncoder(handle_unknown="infrequent_if_exist", sparse_output=False,
                            min_frequency=cfg["preprocessing"]["min_frequency"],
                            dtype=np.float32)
-    return ColumnTransformer([("nominal", onehot, nominal), ("numeric", StandardScaler(), numeric)])
+    transformers = [("nominal", onehot, nominal)]
+    if logged:
+        log_scale = make_pipeline(FunctionTransformer(np.log1p, feature_names_out="one-to-one"),
+                                  StandardScaler())
+        transformers.append(("numeric_log", log_scale, logged))
+    if plain:
+        transformers.append(("numeric", StandardScaler(), plain))
+    return ColumnTransformer(transformers)
 
 
 def load_set(name: str, processed_dir: Path = Path("data/processed")):
@@ -228,11 +262,15 @@ def main() -> None:
     test.to_parquet(out_dir / "test.parquet", index=False)
     for name, frame in sets.items():
         frame = frame.reset_index(drop=True)
-        pre = build_preprocessor(cfg, feature_cols).fit(frame[feature_cols])
+        log_cols, skew = select_log_columns(frame[feature_cols], cfg)
+        pre = build_preprocessor(cfg, feature_cols, log_cols).fit(frame[feature_cols])
         joblib.dump(pre, out_dir / f"preprocessor_{name}.joblib")
         frame.to_parquet(out_dir / f"train_{name}.parquet", index=False)
         manifest["sets"][name] = summary(frame)
-        print(f"  {name:6s} {manifest['sets'][name]}")
+        manifest["sets"][name]["log1p_columns"] = log_cols
+        manifest["sets"][name]["skewness"] = skew
+        print(f"  {name:6s} {manifest['sets'][name]['rows']} lignes, "
+              f"log1p sur {len(log_cols)} colonnes")
     print(f"  test   {manifest['test']}")
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False))
 

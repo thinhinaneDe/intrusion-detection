@@ -41,3 +41,12 @@ seed = 42
 # fraction sont regroupées en une modalité « rare » ; les catégories jamais vues
 # à l'entraînement y sont aussi envoyées. Valeur par défaut à valider (M11).
 min_frequency = 0.001
+
+# log1p appliqué AVANT le scaler aux colonnes numériques dont l'asymétrie
+# (skewness) mesurée sur le jeu d'entraînement dépasse ce seuil. La liste n'est
+# pas écrite à la main : elle est calculée à l'ajustement, par jeu, sur
+# l'entraînement seul, et écrite dans manifest.json. Valeur 2 : pour tout seuil
+# entre 1,75 et 2,77 la liste est identique dans les quatre jeux (M12), donc
+# le prétraitement ne diffère pas entre B et C ; en dessous, log1p sur-corrige
+# (Dload, dmeansz : l'asymétrie change de signe et grandit en valeur absolue).
+log1p_skew_threshold = 2.0
