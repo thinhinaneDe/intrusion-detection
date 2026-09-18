@@ -1061,3 +1061,62 @@ Commandes :
   l'entraînement 78,8 (unsup), 69,9 (A), 72,9 (B), 74,5 (C) ; sur le test 44,0,
   39,5, 41,0 et 41,6. Aucune valeur de test ne dépasse le maximum de
   l'entraînement, pour aucun des quatre jeux.
+
+---
+
+## M14 — Seuil log1p validé, et vérification de l'hypothèse sur ackdat, tcprtt, synack (2026-09-18)
+
+### Décisions de l'auteur
+
+1. **Seuil d'asymétrie de 2 validé.** L'argument retenu est la stabilité entre
+   les quatre jeux, pas la position du seuil dans la distribution : un seuil qui
+   ferait varier la liste de colonnes entre B et C changerait le prétraitement
+   pour une raison étrangère à l'expérience.
+2. **`ackdat`, `tcprtt`, `synack` acceptées en l'état** (M12). Si l'hypothèse
+   ci-dessous se confirme, elle va dans les limites du README comme piste
+   d'amélioration identifiée et non traitée.
+
+### Mesure de l'hypothèse
+
+Hypothèse (M12) : les valeurs typiques de ces trois colonnes sont très
+inférieures à 1, domaine où log1p(x) ≈ x et où la transformation ne comprime
+presque rien. Commande :
+
+    venv/bin/python src/inspect_skew.py
+
+Jeu unsup (950 853 normaux du jour 2), valeurs brutes avant log1p :
+
+- **ackdat** : 29,8 % de valeurs nulles ; médiane 0,000123 ; quantile 99 %
+  0,0851 ; maximum 5,51 ; 0,021 % des lignes ≥ 1. Sur les lignes non nulles
+  (667 311) : médiane 0,00013 ; quantile 99 % 0,101 ; log1p(x)/x vaut 0,9999 à la
+  médiane et 0,953 au quantile 99 %.
+- **tcprtt** : 29,8 % nulles ; médiane 0,000634 ; quantile 99 % 0,185 ;
+  maximum 10,04 ; 0,070 % des lignes ≥ 1. Lignes non nulles (667 342) : médiane
+  0,000672 ; quantile 99 % 0,216 ; log1p(x)/x : 0,9997 et 0,905.
+- **synack** : 29,8 % nulles ; médiane 0,000505 ; quantile 99 % 0,0986 ;
+  maximum 4,53 ; 0,025 % des lignes ≥ 1. Lignes non nulles (667 342) : médiane
+  0,000536 ; quantile 99 % 0,116 ; log1p(x)/x : 0,9997 et 0,946.
+
+**L'hypothèse est confirmée.** Le rapport log1p(x)/x reste entre 0,90 et 1,00
+jusqu'au quantile 99 % : la transformation ne comprime pratiquement rien sur 99 %
+des lignes. Elle n'agit que sur la queue extrême (0,02 à 0,07 % des lignes,
+celles ≥ 1), ce qui explique que le |z| maximal reste élevé (M12 : 78,8, 57,9,
+66,3) alors que l'asymétrie ne tombe qu'à 14,7, 10,0 et 14,7.
+
+Correction sur M12 : j'y écrivais « durées en secondes ». Le fichier features
+ne donne aucune unité pour ces trois colonnes (il les décrit comme des temps de
+mise en place de la connexion TCP). L'unité n'est pas établie ; l'échelle
+mesurée ci-dessus ne dépend pas d'elle.
+
+Environ 30 % de valeurs nulles dans ces trois colonnes : ce sont les flux sans
+handshake TCP (une mesure du nombre de flux concernés par protocole n'a pas été
+faite ici).
+
+### À reprendre dans le README (section limites et pistes d'amélioration)
+
+log1p est appliqué à `ackdat`, `tcprtt` et `synack` sans effet notable sur 99 %
+de leurs valeurs, car ces durées sont typiquement de l'ordre de 10⁻⁴ à 10⁻¹
+(médiane 0,0001 à 0,0006). Une transformation qui tient compte de l'échelle
+(par exemple log(x + ε) avec ε calé sur l'entraînement, ou une division par la
+médiane des valeurs non nulles avant le log) reste une piste identifiée, non
+traitée ni testée.
