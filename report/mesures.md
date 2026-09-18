@@ -1410,3 +1410,98 @@ Conséquence pour le protocole : la calibration jour 2 → jour 1 est
 conservatrice parce que les normaux du jour 2 contiennent une population de
 flux INT/REQ denses absente du jour 1. Elle n'est pas due à une dérive de
 l'ensemble des colonnes (6 colonnes sur 38 avec KS > 0,1).
+
+---
+
+## M18 — Coût d'un autoencodeur sur cette machine, et ACP de référence (2026-09-18)
+
+Contrainte de l'auteur : 8 Go de RAM, pas de GPU, moins de 30 minutes de temps
+d'entraînement total pour pouvoir itérer ; savoir maintenant si les K
+entraînements de la calibration en 5 blocs (M16) sont trop longs. PyTorch
+2.14.0 (version CPU) installé dans le venv ; `requirements.txt` mis à jour.
+Le banc ne cherche pas la meilleure architecture, n'utilise ni attaque ni test.
+
+Commandes (les temps varient de quelques pour cent d'une exécution à l'autre) :
+
+    venv/bin/python src/bench_autoencoder.py
+    venv/bin/python src/bench_autoencoder.py --threads 8 --archs petit moyen --batch-sizes 1024 --curve-epochs 0
+    venv/bin/python src/bench_autoencoder.py --threads 1 --archs petit moyen --batch-sizes 1024 --curve-epochs 0
+    venv/bin/python src/bench_autoencoder.py --threads 2 --archs petit moyen --batch-sizes 1024 --curve-epochs 0
+    venv/bin/python src/bench_autoencoder.py --archs moyen --batch-sizes 1024 --curve-archs moyen --curve-epochs 40
+    venv/bin/python src/bench_autoencoder.py --archs --curve-archs
+
+Autoencodeur mesuré : perceptron symétrique, ReLU, perte MSE moyenne par ligne
+(sur les 56 colonnes), Adam, taux d'apprentissage 10⁻³, 56 colonnes en entrée
+(jeu `unsup` après préprocesseur). Trois tailles de couches cachées, dont la
+dernière est le goulot : « petit » [32, 16, 8] (5 024 paramètres), « moyen »
+[128, 64, 16] (33 224), « large » [256, 128, 32] (103 256). Entraînement de bloc
+= 760 682 lignes (80 % des 950 853 normaux).
+
+### Temps d'une epoch sur 80 % des normaux (4 threads, le défaut de PyTorch ici)
+
+- Petit : 3,11 s (lot 256), **1,11 s (lot 1 024)**, 0,91 s (lot 4 096).
+- Moyen : 4,26 s (lot 256), **2,08 s (lot 1 024)**, 1,87 s (lot 4 096).
+- Large : 13,20 s (lot 256), **12,15 s (lot 1 024)**, 8,48 s (lot 4 096).
+- Notation des 950 853 normaux : petit 0,35 s, moyen 0,92 s, large 3,81 s (lot
+  1 024).
+- **Pic de mémoire : 2 273 Mo** (X en float32 : 213 Mo).
+
+**Nombre de threads** (lot 1 024, une epoch, petit puis moyen) : 1 thread 3,63 s
+et 6,68 s ; 2 threads 3,78 s et 6,50 s ; **4 threads 1,11 s et 2,08 s** ; **8
+threads 6,57 s et 8,08 s**. Sur ces petits réseaux, 8 threads sont de 4 à 6 fois
+plus lents que 4 (cause non investiguée). La machine annonce 8 cœurs logiques.
+Le nombre de threads est donc à fixer explicitement dans le code et la
+configuration (4), pas à laisser au défaut.
+
+### Coût total de la calibration en 5 blocs plus le modèle final
+
+Calcul arithmétique (**extrapolation linéaire des temps mesurés, pas une
+exécution complète**) : 5 modèles de bloc sur 80 % des lignes plus un modèle
+final sur 100 % (× 1,25) = 6,25 fois le temps d'une epoch de bloc, par epoch,
+plus moins de 15 s de notation. Lot 1 024 :
+
+- Petit : 30 epochs → 208 s (**3,5 min**) ; 50 epochs → 347 s (5,8 min).
+- Moyen : 30 epochs → 390 s (**6,5 min**) ; 40 epochs → 520 s (8,7 min).
+- Large : 15 epochs → 1 139 s (19 min) ; 30 epochs → 2 278 s (**38 min, hors
+  budget**) ; avec un lot de 4 096 et 30 epochs → 1 590 s (26,5 min, à la
+  limite, et l'optimisation change).
+
+**La calibration en 5 blocs est donc abordable pour les architectures petite et
+moyenne** (moins de 10 minutes chacune) ; le repli sur l'option 1 (seuil tiré
+des scores d'entraînement) n'est pas nécessaire pour elles. Seule l'architecture
+large dépasse le budget de 30 minutes.
+
+### Convergence sur des normaux tenus à l'écart
+
+Validation = dernier bloc de temps (20 % des normaux). Le préprocesseur `unsup`
+a vu ce bloc : la fuite ne porte que sur le scaler, acceptable pour un banc de
+vitesse, pas pour la calibration finale. Erreur de reconstruction par ligne
+(moyenne, médiane, quantile 99 %) :
+
+- **Petit**, epoch 15 : entraînement 0,0358 ; validation 0,0372 ; 0,02455 ;
+  0,2795. Décroissance encore lente (epoch 7 : moyenne 0,0459).
+- **Moyen**, epoch 15 : 0,0013 ; validation 0,0015 ; 0,00047 ; 0,0214. Epoch 30 :
+  0,0009 ; validation 0,0009 ; 0,00020 ; 0,0142. Epoch 40 : 0,0008 ; validation
+  0,0009 ; 0,00026 ; 0,0124. La validation fluctue d'une epoch à l'autre (epoch
+  35 : moyenne 0,0010, médiane 0,00033) et se stabilise vers 25 à 30 epochs.
+
+### ACP de référence (modèle linéaire équivalent)
+
+Ajustée sur les mêmes 80 % des normaux, évaluée sur le même bloc de validation,
+avec la même erreur par ligne. Variance expliquée cumulée : 4 composantes
+61,33 % ; 8 : 79,88 % ; 12 : 88,73 % ; 16 : 93,65 % ; 24 : 98,54 % ; 32 :
+99,76 % ; 48 : 100 %. Erreur de validation (moyenne, médiane, quantile 99 %) :
+
+- ACP 8 composantes : 0,1578 ; 0,09251 ; 1,4275 ;
+- ACP 16 composantes : 0,0507 ; 0,02725 ; 0,3709 ;
+- ACP 32 composantes : 0,0016 ; 0,00038 ; 0,0206.
+
+Lecture : à goulot égal l'autoencodeur reconstruit bien mieux que le modèle
+linéaire : petit (goulot 8) 0,0372 contre 0,1578 (environ 4 fois mieux) ; moyen
+(goulot 16) 0,0009 à 0,0015 contre 0,0507 (34 à 56 fois mieux), soit la
+fidélité qu'il faut 32 composantes linéaires pour atteindre. Les normaux ont donc
+une structure non linéaire que l'ACP ne capte qu'avec environ le double de
+dimensions. Ce que cela ne dit pas : si un meilleur ajustement aux normaux
+améliore la détection d'attaques (un autoencodeur trop fidèle reconstruit aussi
+les attaques). Cela ne peut se lire que sur le test, donc ne peut pas servir à
+choisir l'architecture sans rompre le protocole non supervisé.
