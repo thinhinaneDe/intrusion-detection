@@ -3,8 +3,9 @@
 Une entrée par mesure, datée, avec la commande exacte. Rien d'estimé.
 Les résultats qui contredisent une hypothèse restent écrits.
 
-Environnement : Python 3.12.13, bibliothèque standard uniquement (le venv est
-vide à cette date). Les commandes sont lancées depuis la racine du dépôt.
+Environnement : Python 3.12.13. Les premières mesures (M01 à M10) n'utilisent que la
+bibliothèque standard (le venv était alors vide) ; depuis M11, voir `requirements.txt`.
+Les commandes sont lancées depuis la racine du dépôt.
 
 > **Avertissement sur les intervalles de confiance.** Les intervalles de Wilson
 > consignés en M09, M16, M20 et M24 supposent des observations indépendantes. Or les
@@ -2405,4 +2406,83 @@ version avec et sans TTL) :
 Pas d'intervalle par blocs, donc rapportés sans intervalle : le rappel sur les attaques tenues à
 l'écart, les rapports de calibration (0,95 ; 2,5 ; 12 et leurs équivalents sans TTL), le
 diagnostic au seuil par défaut.
+
+---
+
+## M28 — Intervalles par blocs de temps pour tous les modèles, et corrections de M20 et M26 (2026-09-18)
+
+Méthode déclarée en M27 (1 000 réplications, blocs de 10 minutes, graine 42, IC à 95 %),
+plus des **écarts appariés** entre les trois modèles non supervisés, ajoutés à la
+demande de la question posée d'avance en M19 (mêmes blocs tirés dans chaque réplication).
+Commandes (les deux versions, avec et sans TTL) :
+
+    venv/bin/python src/block_ci.py --config config.toml
+    venv/bin/python src/block_ci.py --config config_sans_ttl.toml
+    venv/bin/python src/report_tables.py
+
+Contrôle : le point estimé coïncide avec les valeurs écrites par les modèles (écart
+absolu maximal de 1,1·10⁻¹⁶ sur l'AUC-PR, nul sur les rappels et taux). Deux exécutions
+successives (avec et sans les écarts appariés) donnent des intervalles marginaux
+identiques. Les tables du README sont générées par `src/report_tables.py` depuis
+`block_ci.json`, `paired_bootstrap.json` et les JSON des modèles.
+
+### AUC-PR au test, [IC par blocs] (sans TTL / avec TTL)
+
+- Isolation Forest 0,118 [0,058 ; 0,180] / 0,308 [0,170 ; 0,442] ;
+- autoencodeur moyen 0,091 [0,041 ; 0,196] / 0,121 [0,053 ; 0,297] ; petit 0,061
+  [0,029 ; 0,120] / 0,114 [0,052 ; 0,247] ;
+- supervisé A 0,948 [0,905 ; 0,968] / 0,976 [0,957 ; 0,988] ; B 0,950 [0,909 ; 0,970] /
+  0,970 [0,947 ; 0,985] ; C 0,944 [0,896 ; 0,964] / 0,974 [0,953 ; 0,987].
+
+### Écarts appariés entre modèles non supervisés (AUC-PR ; rappel lu au même taux à 1 %, 0,1 %, 0,01 %, en points)
+
+- **Avec TTL** : petit − moyen −0,007 [−0,057 ; +0,007] ; +0,12 [−24,14 ; +5,24] ; +0,77
+  [−2,65 ; +1,17] ; +0,27 [−0,18 ; +0,62]. Isolation Forest − moyen +0,187 [+0,063 ; +0,250] ;
+  +36,81 [−0,63 ; +47,59] ; +1,84 [−1,55 ; +3,46] ; +0,06 [−0,62 ; +0,62]. Isolation Forest −
+  petit +0,194 [+0,081 ; +0,263] ; +36,69 [+11,60 ; +47,47] ; +1,07 [−0,28 ; +2,90] ; −0,22
+  [−0,88 ; +0,39].
+- **Sans TTL** : petit − moyen −0,030 [−0,078 ; −0,011] ; −0,17 [−5,11 ; +1,00] ; +1,01
+  [−2,19 ; +1,45] ; +0,27 [+0,06 ; +1,10]. Isolation Forest − moyen +0,027 [−0,042 ; +0,055] ;
+  −2,26 [−15,77 ; +0,39] ; −0,27 [−3,83 ; 0,00] ; 0,00 [−0,25 ; 0,00]. Isolation Forest − petit
+  +0,057 [+0,010 ; +0,094] ; −2,09 [−10,97 ; +0,22] ; −1,28 [−1,94 ; −0,53] ; −0,27 [−1,30 ; −0,06].
+
+### Corrections
+
+- **M20 : « le petit détecte mieux que le moyen aux taux stricts » est retiré.** Cette
+  affirmation reposait sur des intervalles de Wilson « disjoints », trop étroits. Avec
+  les écarts appariés par blocs : avec TTL, aucune différence (AUC-PR −0,007
+  [−0,057 ; +0,007] ; rappel à 0,1 % +0,77 [−2,65 ; +1,17] ; à 0,01 % +0,27 [−0,18 ; +0,62]) ; sans
+  TTL, **le moyen a une AUC-PR plus élevée** (petit − moyen −0,030 [−0,078 ; −0,011]) et
+  l'avantage du petit à 0,01 % est de 0,27 point [+0,06 ; +1,10], inférieur au point de rappel,
+  donc non interprétable (M27). La réponse à la question posée d'avance en M19 est : **non, le
+  petit ne détecte pas mieux que le moyen**, ni avec ni sans TTL.
+- **M20 : « aucun autoencodeur ne bat l'Isolation Forest sur l'AUC-PR »** : confirmé avec TTL
+  (IF − moyen +0,187 [+0,063 ; +0,250] ; IF − petit +0,194 [+0,081 ; +0,263]) ; **sans TTL, non
+  établi** contre le moyen (+0,027 [−0,042 ; +0,055]) et faible contre le petit (+0,057
+  [+0,010 ; +0,094]).
+- **M26 : le TTL et le supervisé.** Rappel lu à 0,1 % : A 75,8 [69,6 ; 82,2] sans TTL contre 85,6
+  [79,7 ; 95,7] avec ; B 75,6 [69,1 ; 81,8] contre 82,5 [75,3 ; 93,5] ; C 73,7 [66,2 ; 81,3]
+  contre 86,3 [76,8 ; 96,8]. **Les intervalles se recouvrent** (comparaison non appariée, non
+  faite) : l'apport du TTL au rappel du supervisé est de l'ordre de 10 points mais n'est pas établi
+  statistiquement. Pour l'Isolation Forest il l'est : rappel lu à 1 % 2,9 [1,7 ; 4,3] sans TTL contre
+  42,9 [31,7 ; 53,8] avec (intervalles disjoints) ; l'AUC-PR (0,118 [0,058 ; 0,180] contre 0,308
+  [0,170 ; 0,442]) se recouvre à peine.
+
+### Ce qui reste solide, et ce qui ne l'est pas
+
+- **Solide (écarts de plusieurs dizaines de points, IC apparié excluant zéro)** : B − C sur
+  Reconnaissance à 0,01 % sans TTL +75,9 [+69,3 ; +82,0] et à 0,1 % +34,8 [+19,4 ; +45,6] ; sur
+  Exploits à 0,01 % sans TTL +28,3 [+20,8 ; +33,4] (M26).
+- **Contrôle spécifique aux familles retirées** (sans TTL, rappel lu au même taux, groupes) : sur
+  les **sept autres familles**, A, B et C sont indiscernables (0,1 % : 63,9 [51,2 ; 75,0], 63,4
+  [50,3 ; 74,5], 69,2 [57,7 ; 79,0] ; 0,01 % : 46,1 [28,6 ; 59,7], 48,2 [30,5 ; 62,0], 45,9 [28,7 ;
+  60,4]) ; sur **Exploits + Reconnaissance**, C chute : 0,1 % A 93,3 [90,5 ; 96,2], B 93,5 [90,9 ;
+  96,2], C **80,3 [73,8 ; 87,3]** ; 0,01 % A 71,5 [63,7 ; 77,9], B 78,3 [72,0 ; 84,7], C **35,7
+  [28,9 ; 44,7]**. La perte est spécifique aux familles retirées.
+- **Familles de petit effectif** : les intervalles par blocs couvrent presque tout l'intervalle
+  possible (Analysis, sans TTL, rappel lu à 0,1 % : 80,7 [0,0 ; 100,0] ; Backdoors 96,7 [76,7 ; 99,5] ;
+  Worms 95,8 [88,5 ; 100,0] ; Shellcode 78,9 [69,2 ; 87,7]) : les rappels par famille de ces
+  familles ne sont pas interprétables individuellement.
+- **Écarts de quelques points** entre A, B et C, ou entre modèles non supervisés : non
+  interprétés (M27, variabilité d'entraînement non mesurée).
 
