@@ -1929,3 +1929,172 @@ attaques par bloc, 7,69 % à 9,05 %) et B (9 357 à 11 105). La précision moyen
 par bloc est donc bien définie et la moyenne sur les blocs est une règle
 d'agrégation raisonnable.
 
+---
+
+## M24 — Modèle supervisé sur A, B et C, et signature TTL (2026-09-18)
+
+Grille et critère committés avant la recherche (M23, `8396d06`), code committé avant
+l'exécution (`65719c7`). Commandes :
+
+    venv/bin/python src/models/supervised.py
+    venv/bin/python src/inspect_ttl.py
+
+Durées : recherche 494 s ; conditions A, B, C 89, 82 et 82 s ; **12,9 min au total**
+(22 h 26 à 22 h 39), dans le budget de 30 minutes.
+
+### Recherche d'hyperparamètres (données de C, 5 blocs de temps)
+
+Précision moyenne (AUC-PR) par bloc tenu à l'écart (blocs 1 à 5), moyenne
+(critère) et poolée (information) :
+
+- profondeur 6, 100 arbres : 0,9439 0,9598 0,9580 0,9656 0,9553 ; **moyenne 0,9565** ;
+  poolée 0,9568 ;
+- profondeur 6, 300 arbres : 0,9422 0,9587 0,9565 0,9642 0,9538 ; 0,9551 ; 0,9554 ;
+- profondeur 10, 100 arbres : 0,9413 0,9576 0,9561 0,9636 0,9534 ; 0,9544 ; 0,9547 ;
+- profondeur 10, 300 arbres : 0,9392 0,9565 0,9552 0,9629 0,9517 ; 0,9531 ; 0,9535.
+
+**Retenue : profondeur 6, 100 arbres** (la plus haute et la moins coûteuse),
+figée pour A, B et C. Les écarts entre configurations sont petits (0,0034 entre la
+meilleure et la pire) et la complexité supplémentaire dégrade légèrement le critère.
+
+### Résultats (mêmes budgets 1 %, 0,1 % référence, 0,01 % ; même calibration que M16)
+
+**AUC-PR au test : A 0,9757 ; B 0,9696 ; C 0,9744** (prévalence 1,395 %).
+
+**Taux de faux positifs observé au test contre visé, rappel calibré, précision**
+(1 % ; 0,1 % ; 0,01 %) :
+
+- **A** : 0,1804 % ; 0,0087 % ; 0,0006 % · rappel 90,96 % ; 73,33 % ; 49,38 % ·
+  précision 87,71 % ; 99,17 % ; 99,91 %. À 0,1 % : 88 faux positifs, 7,0 fausses
+  alertes par heure en moyenne, 42 la pire heure ; VP 10 470, FN 3 808.
+- **B** : 0,2281 % ; 0,0193 % ; 0,0007 % · rappel 91,51 % ; 74,02 % ; 46,02 % ·
+  précision 85,03 % ; 98,19 % ; 99,89 %. À 0,1 % : 195 faux positifs, 15,5 par
+  heure, 96 la pire heure.
+- **C** : 0,1493 % ; 0,0096 % ; 0,0006 % · rappel 91,62 % ; 64,18 % ; 44,52 % ·
+  précision 89,68 % ; 98,95 % ; 99,91 %. À 0,1 % : 97 faux positifs, 7,7 par heure,
+  50 la pire heure.
+
+**Le taux observé est inférieur au taux visé** dans les trois conditions (de 4,4 à 17
+fois selon le budget) : la calibration jour 2 → jour 1 est conservatrice, comme pour
+l'Isolation Forest (M16) et à l'inverse des autoencodeurs (M20). Au budget de
+référence, 7 à 15 fausses alertes par heure au lieu des 80 visées.
+
+**Rappel lu au même taux sur le test** (1 % ; 0,1 % ; 0,01 %) : A **100,00 %** ;
+85,56 % ; 73,74 % · B **100,00 %** ; 82,48 % ; 71,27 % · C **100,00 %** ; 86,29 % ;
+64,52 %. **À 1 % le rappel est saturé à 100 % pour les trois conditions** : ce
+budget n'a aucun contraste pour un modèle supervisé ici (le seuil lu vaut −11 : la
+quasi-totalité des normaux a une marge proche de −11 et toutes les attaques sont
+au-dessus). Le contraste se lit à 0,1 % et 0,01 %.
+
+**Diagnostic au seuil par défaut (marge 0, probabilité 0,5)** : test : A taux de faux
+positifs 0,1301 %, rappel 87,49 % (VP 12 492, FP 1 313, FN 1 786) ; B 0,1346 %,
+84,86 % ; C 0,0846 %, 84,31 %. Hors échantillon (jour 2) : A 0,6698 %, 90,62 % ; B
+0,3517 %, 86,79 % ; C 0,5981 %, 84,16 %. Le seuil par défaut ne correspond à aucun
+budget : il donne un taux de faux positifs de 0,08 % à 0,13 % au test et de 0,35 % à
+0,67 % hors échantillon.
+
+### Rappel sur les attaques tenues à l'écart contre rappel du test (même seuil calibré, mêmes familles)
+
+Tenues à l'écart (jour 2, moment non vu, à taux de faux positifs = budget) / test
+(à ce même seuil, où le taux de faux positifs est plus bas que le budget) :
+
+- **A** : 93,33 / 90,96 % (1 %) ; 79,90 / 73,33 % (0,1 %) ; 59,91 / 49,38 % (0,01 %) ;
+- **B** : 93,35 / 91,51 % ; 79,88 / 74,02 % ; 58,90 / 46,02 % ;
+- **C** (7 familles vues) : 90,06 / 88,18 % ; 70,56 / 59,78 % ; 59,24 / 46,89 %.
+
+À seuil égal, le test est en dessous de 2 à 13 points. **Ce n'est pas une perte de
+capacité de détection pure** : le taux de faux positifs au test est lui aussi plus
+bas que celui de la calibration, donc les scores des normaux et ceux des attaques
+sont décalés vers le bas au test. À taux de faux positifs égal, le rappel du test
+n'est pas inférieur à celui des blocs tenus à l'écart (A, toutes familles : 85,56 %
+lu au test contre 79,90 % hors échantillon à 0,1 % ; 73,74 % contre 59,91 % à
+0,01 %). Par famille au budget 0,1 % (A, hors échantillon / test) : Reconnaissance
+99,42 / 96,49 ; Exploits 92,54 / 90,82 ; DoS 91,47 / 87,27 ; Fuzzers 22,96 / 22,90 ;
+Generic 98,44 / 98,02.
+
+### Les familles retirées de C, avec la découpe jumeau/sans jumeau
+
+Rappel au test, **lu au même taux** (A ; B ; C) :
+
+- **Exploits** : 100,00 ; 100,00 ; 100,00 % (1 %) · 97,40 ; 96,68 ; 94,83 % (0,1 %) ·
+  91,37 ; 89,16 ; 83,57 % (0,01 %).
+- **Reconnaissance** : 100,00 ; 100,00 ; 100,00 % (1 %) · 98,91 ; 98,68 ; **89,94 %**
+  (0,1 %) · 96,55 ; 95,80 ; **42,18 %** (0,01 %).
+
+Écarts en points (A − B : effet du volume seul ; B − C : effet de la famille inédite
+à volume constant), rappel lu au même taux : Exploits 0,1 % : +0,72 et +1,86 ;
+0,01 % : +2,20 et +5,59 · **Reconnaissance 0,1 % : +0,23 et +8,74 ; 0,01 % : +0,75 et
++53,62**. Aucun intervalle de confiance sur ces écarts n'est calculé (mesures
+appariées, non faites).
+
+Au seuil calibré : Exploits 0,1 % : A 90,82, B 91,49, C 83,23 % ; 0,01 % : 58,41 ;
+52,89 ; 55,84 %. Reconnaissance 0,1 % : 96,49 ; 96,38 ; **41,38 %** ; 0,01 % : 50,06 ;
+38,97 ; **6,67 %**.
+
+**Découpe jumeau/sans jumeau, Reconnaissance** (449 lignes avec jumeau dans A, 415 dans
+B, 1 dans C) : au seuil calibré à 0,01 %, A 91,3 % avec jumeau contre 35,71 % sans ;
+B 49,6 % contre 35,62 % ; à 0,1 %, A 100 % contre 95,27 %. La mémorisation gonfle
+donc bien le rappel global de A et de B aux budgets stricts. **Elle n'explique pas
+l'écart B − C** : sans jumeau, l'écart lu au même taux est de +52,34 points à 0,01 %
+(94,49 % pour B contre 42,15 % pour C) et de +8,32 à 0,1 %, contre +53,62 et +8,74
+avec toutes les lignes. Exploits n'a que 3 lignes avec jumeau : sans objet.
+
+### Importance des variables (gain du modèle final)
+
+- A : ct_state_ttl **65,2 %**, sttl 14,0 %, proto arp 8,5 %, service `-` 4,1 %.
+- B : ct_state_ttl **51,5 %**, proto arp 17,4 %, service `-` 10,0 %, proto unas 8,5 %,
+  sttl 2,4 %.
+- C : ct_state_ttl **70,4 %**, proto tcp 9,5 %, ct_dst_sport_ltm 8,9 %, sttl 4,5 %.
+
+### Ce que séparent les colonnes TTL (mesure descriptive)
+
+`ct_state_ttl` est décrit dans le fichier features comme le nombre de connexions par
+état selon des plages de TTL source et destination (colonnes 6, 10, 11).
+
+- **Normaux** : TTL source 31 pour 94,0 % des flux au jour 2 et 98,3 % au jour 1 ;
+  `ct_state_ttl` = 0 pour 96,6 % (jour 2) et 99,4 % (jour 1).
+- **Attaques** : `ct_state_ttl` vaut 1 ou 2 pour **98,7 %** des attaques au jour 2
+  (53,2 % + 45,5 %) et **98,8 %** au jour 1 (60,0 % + 38,8 %), contre 2,9 % (2,1 % +
+  0,8 %) et 0,5 % (0,3 % + 0,2 %) des normaux. TTL source ≥ 200 : 79,9 % des attaques
+  et 2,9 % des normaux au jour 2 ; 79,5 % et 0,42 % au jour 1.
+- **Les familles retirées portent la même signature** (jour 1) : Exploits
+  `ct_state_ttl` 1 ou 2 pour 98,3 % (TTL source 254 pour 40,4 %, 62 pour 59,4 %) ;
+  Reconnaissance 99,5 % (TTL source 254 pour 99,9 %).
+- Les normaux à TTL source 254 sont 2,89 % au jour 2 contre 0,42 % au jour 1 (recoupe
+  M17 : quantile 99 % de `sttl` des normaux 254 contre 31).
+
+### Lecture
+
+- **Réponse à la question du projet, sous réserve de la mesure TTL.** Retirer les
+  familles de l'entraînement coûte peu sur **Exploits** (B − C : +1,9 point à 0,1 %,
+  +5,6 à 0,01 % ; C garde 83,6 % de rappel à 0,01 %) et beaucoup sur
+  **Reconnaissance** aux budgets stricts (B − C : +8,7 à 0,1 %, **+53,6 à 0,01 %** :
+  42 % contre 96 %). Le volume seul (A − B) coûte moins de 1 point sur Reconnaissance
+  et jusqu'à 2,2 points sur Exploits. Exploitation d'une vulnérabilité et balayage se
+  comportent donc de façon très différente, comme l'auteur l'anticipait (M10).
+- **Réserve majeure : ces résultats sont très probablement gonflés par un artefact du
+  banc d'essai.** Le modèle repose pour 52 à 70 % sur `ct_state_ttl`, qui sépare à
+  lui seul 98,8 % des attaques de 99,5 % des normaux au jour 1, y compris pour les
+  familles jamais vues. Une AUC-PR de 0,97 pour C, dont 40 % des attaques du test
+  sont de familles absentes de l'entraînement, est cohérente avec un raccourci
+  partagé par toutes les familles (TTL des hôtes générateurs) et non avec une
+  généralisation du comportement d'attaque. **Non testé** : l'ablation des colonnes
+  TTL (`sttl`, `dttl`, `ct_state_ttl`), qui dirait ce qui reste. Cette réserve
+  s'applique aussi à l'Isolation Forest et aux autoencodeurs, pour lesquels un TTL
+  de 254 est une anomalie par rapport aux normaux à 31.
+- Le budget de 1 % ne discrimine pas les conditions supervisées (100 % partout) ; la
+  lecture utile est à 0,1 % et 0,01 %.
+- L'écart de calibration (taux observé de 4 à 17 fois sous le budget) est du même
+  sens que pour l'Isolation Forest et opposé à celui des autoencodeurs.
+
+### À reprendre dans le README (limites)
+
+Artefact TTL : `ct_state_ttl` et `sttl` séparent attaques et normaux dans les deux
+jours et pour toutes les familles ; le trafic normal a un TTL source de 31 (94 % à
+98 %), les attaques 254 ou 62 (`ct_state_ttl` 1 ou 2 dans 98,7 % des cas). C'est une
+caractéristique du banc d'essai synthétique (IXIA PerfectStorm, M04) plutôt qu'une
+signature d'attaque, comparable au risque d'apprendre une adresse IP. Hypothèse non
+vérifiée : les normaux à TTL source 254 (2,89 % au jour 2 contre 0,42 % au jour 1)
+seraient des flux issus des hôtes générateurs d'attaques étiquetés normaux, ce qui
+rejoindrait la labellisation contestée (M19).
+
