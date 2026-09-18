@@ -30,31 +30,39 @@ from evaluate import evaluate_scores, print_report, twin_flags
 from prepare import build_preprocessor, select_log_columns
 
 
-def out_of_fold_scores(train_raw: pd.DataFrame, feature_cols: list[str], cfg: dict, n_folds: int,
-                       fit_score: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> np.ndarray:
-    """Scores hors échantillon des normaux d'entraînement, par blocs de temps contigus.
+def iter_time_blocks(train_raw: pd.DataFrame, feature_cols: list[str], cfg: dict, n_folds: int):
+    """Génère (i, keep, held, x_fit, x_held) pour chaque bloc de temps contigu.
 
-    `train_raw` doit être trié par Stime. À chaque bloc, le préprocesseur est
-    réajusté sur les seules lignes d'entraînement de ce bloc : ni le scaler ni la
-    sélection log1p ne voient le bloc noté.
+    `train_raw` doit être trié par Stime. `held` : indices du bloc tenu à
+    l'écart ; `keep` : masque des lignes d'entraînement (tout sauf le bloc). Le
+    préprocesseur (sélection log1p, encodeur, scaler) est réajusté sur les seules
+    lignes de `keep` : ni le scaler ni la sélection log1p ne voient le bloc noté.
     """
     n = len(train_raw)
-    oof = np.empty(n)
     for i, held in enumerate(np.array_split(np.arange(n), n_folds)):
         keep = np.ones(n, dtype=bool)
         keep[held] = False
         fit_rows = train_raw.loc[keep, feature_cols]
         log_cols, _ = select_log_columns(fit_rows, cfg)
         pre = build_preprocessor(cfg, feature_cols, log_cols).fit(fit_rows)
-        oof[held] = fit_score(pre.transform(fit_rows).astype(np.float32),
-                              pre.transform(train_raw.iloc[held][feature_cols]).astype(np.float32))
+        yield (i, keep, held, pre.transform(fit_rows).astype(np.float32),
+               pre.transform(train_raw.iloc[held][feature_cols]).astype(np.float32))
+
+
+def out_of_fold_scores(train_raw: pd.DataFrame, feature_cols: list[str], cfg: dict, n_folds: int,
+                       fit_score: Callable[[np.ndarray, np.ndarray], np.ndarray]) -> np.ndarray:
+    """Scores hors échantillon des normaux d'entraînement, par blocs de temps contigus."""
+    oof = np.empty(len(train_raw))
+    for i, _, held, x_fit, x_held in iter_time_blocks(train_raw, feature_cols, cfg, n_folds):
+        oof[held] = fit_score(x_fit, x_held)
         print(f"  bloc {i + 1}/{n_folds} : {len(held)} flux notés, "
               f"score médian {np.median(oof[held]):.4f}", flush=True)
     return oof
 
 
 def report_and_save(name: str, cfg: dict, model_cfg: dict, oof: np.ndarray, s_train: np.ndarray,
-                    s_test: np.ndarray, out: Path, extra: dict | None = None) -> dict:
+                    s_test: np.ndarray, out: Path, extra: dict | None = None,
+                    twin_set: str = "unsup") -> dict:
     """Évalue les scores du test, affiche le rapport, écrit scores et résultats.
 
     `oof` calibre les seuils ; `s_train` (scores du modèle final sur ses propres
@@ -62,11 +70,12 @@ def report_and_save(name: str, cfg: dict, model_cfg: dict, oof: np.ndarray, s_tr
     du test sont alignés sur `test.parquet`. Écrit
     `results/<name>_test_scores.npy`, `_oof_scores.npy` et `<name>.json`
     (`extra` : champs supplémentaires du modèle, ajoutés au fichier JSON).
+    `twin_set` : jeu d'entraînement dont on marque les jumeaux du test.
     """
     ecfg = cfg["evaluation"]
     test = pd.read_parquet(out / "test.parquet", columns=["Stime", "label", "family"])
     y_test, family_test = test["label"].to_numpy(), test["family"].to_numpy()
-    twins = twin_flags("unsup", out)
+    twins = twin_flags(twin_set, out)
     args_eval = dict(y_true=y_test, family=family_test, scores=s_test,
                      budgets=ecfg["fpr_budgets"], stime=test["Stime"].to_numpy(),
                      has_twin=twins["has_twin"].to_numpy(), alpha=ecfg["confidence_alpha"])

@@ -86,6 +86,9 @@ def _rate(hits: int, n: int, alpha: float) -> tuple[float, float, float]:
     return hits / n, lo, hi
 
 
+rate_ci = _rate  # version publique : (taux, borne basse, borne haute de Wilson)
+
+
 def recall_by_family(family, y_true, y_pred, has_twin=None, alpha: float = 0.05) -> pd.DataFrame:
     """Rappel de détection par famille d'attaque, avec découpe optionnelle par jumeau.
 
