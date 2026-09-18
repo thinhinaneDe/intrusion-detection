@@ -402,3 +402,136 @@ service, sttl, dttl, sbytes, dbytes, Spkts, Dpkts, dur) : 63 292 groupes
 communs, dont 382 258 lignes du jour 1. Le détecteur inter-jours fonctionne
 donc. Quelle colonne, parmi les 41, fait tomber les recoupements à zéro n'a pas
 été cherché.
+
+---
+
+## M08 — Décisions sur doublons et contradictions, et mesures associées (2026-09-18)
+
+### Décisions de l'auteur (M05 suite)
+
+1. **Doublons exacts (A) : supprimés, après le découpage temporel** (un
+   exemplaire conservé par côté), pour ne pas déséquilibrer arbitrairement
+   les deux jeux.
+2. **Contradictions (C) : conservées.** Ce n'est pas du bruit à nettoyer mais
+   une propriété du jeu ; elles constituent une borne supérieure de
+   performance (voir plus bas, avec une correction de formulation).
+3. **`ct_*`, `stcpb` et `dtcpb` conservés** comme features : ce sont des
+   features de contexte, pas des identifiants.
+4. **srcip, dstip, sport, dsport, Stime, Ltime exclus des features
+   d'entraînement.** Un modèle qui apprendrait qu'une IP est malveillante
+   aurait mémorisé la machine du banc d'essai, non une signature. `Stime` sert
+   au découpage, pas à l'apprentissage. Le modèle voit donc les 41 colonnes de
+   M07 (moins les cibles).
+
+### Mesure 1 — Lignes supprimées de chaque côté par la déduplication exacte
+
+Commande (26 s) :
+
+    python3 src/inspect_plafond.py
+
+Déduplication sur les 49 colonnes, appliquée séparément à chaque côté, après
+retrait des 3 doublons de jonction.
+
+- **Jour 2 (entraînement)** : 1 452 842 lignes avant, **416 624 supprimées**
+  (28,7 %), 1 036 218 après.
+- **Jour 1 (test)** : 1 087 202 lignes avant, **64 006 supprimées** (5,9 %),
+  1 023 196 après.
+- Contrôle : 416 624 + 64 006 = 480 630, le surplus de M06. Aucun doublon ne
+  traversait les deux jours (M06), donc le résultat ne dépend pas de l'ordre
+  découpage/déduplication pour ce décompte ; il dépend en revanche du côté.
+- Les 3 doublons de jonction sont tous du normal : 1 au jour 1 (normal
+  1 064 988 → 1 064 987), 2 au jour 2 (normal 1 153 776 → 1 153 774), par
+  différence avec M02.
+
+Lignes supprimées par classe, jour 2 : normal 202 921 ; Generic 185 414 ;
+Exploits 15 559 ; DoS 10 346 ; Fuzzers 1 391 ; Reconnaissance 611 ;
+Analysis 268 ; Backdoors 111 ; Worms 3 ; Shellcode 0.
+Jour 1 : normal 56 069 ; Generic 4 689 ; Exploits 1 367 ; Fuzzers 1 060 ;
+DoS 342 ; Backdoors 235 ; Analysis 225 ; Reconnaissance 19 ; Shellcode 0 ;
+Worms 0.
+
+Effectifs d'attaques restants par famille (calcul par différence entre M02 et
+les suppressions ci-dessus, non imprimés tels quels par le script) :
+
+- Jour 2 (entraînement), 85 365 attaques au total : Generic 22 545 ; Exploits
+  23 557 ; Fuzzers 17 804 ; Reconnaissance 11 617 ; DoS 4 840 ; Analysis
+  1 883 ; Backdoors 1 684 ; Shellcode 1 288 ; Worms 147.
+- Jour 1 (test), 14 278 attaques au total : Exploits 4 042 ; Fuzzers 3 991 ;
+  Generic 2 833 ; Reconnaissance 1 740 ; DoS 825 ; Analysis 301 ; Backdoors
+  299 ; Shellcode 223 ; Worms 24.
+
+Ce que la déduplication change, en clair :
+
+- Les attaques du jour 2 passent de 299 068 à 85 365 (−71 %). **Generic passe
+  de 207 959 à 22 545** : il représentait environ 70 % des attaques du jour 2
+  avant, environ 26 % après (calcul arithmétique sur ces effectifs). L'énorme
+  volume de Generic était presque entièrement des copies exactes.
+- Part d'attaques dans l'entraînement : environ 20,6 % avant, 8,2 % après ;
+  dans le test : environ 2,0 % avant, 1,4 % après.
+- Le déséquilibre entre les deux côtés est réel et non arbitraire : 28,7 % de
+  lignes supprimées à l'entraînement contre 5,9 % au test. Il vient de la
+  nature du jeu (le jour 2 concentre les copies).
+- Worms (147 en entraînement, 24 en test) et Shellcode (1 288 en
+  entraînement, 223 en test) n'ont quasiment pas de doublons exacts et sont
+  inchangés ou presque.
+
+### Mesure 2 — Plafond de performance dû aux contradictions (borne supérieure)
+
+Même commande. Définition : sur les 41 features retenues, des lignes
+identiques à étiquettes différentes reçoivent la même sortie de tout modèle
+qui est une fonction de ces 41 colonnes (le codage et la normalisation ne
+peuvent que confondre des valeurs, jamais séparer deux valeurs identiques).
+Au mieux, un modèle classe correctement la classe majoritaire de chaque
+groupe ; le minimum d'erreurs est donc, par groupe, effectif − effectif de la
+classe majoritaire. Calculé côté par côté, en connaissant les étiquettes du
+côté évalué : c'est une borne oracle, pas un score atteignable.
+
+**Correction de formulation.** Les 1 879 lignes normal/attaque
+indiscernables ne sont pas toutes forcément mal classées : un modèle en
+classe correctement une partie (la majorité de chaque groupe). Le minimum
+d'erreurs binaires est de **706 avant déduplication** (652 en entraînement +
+54 en test) et de **702 après** (648 + 54), pas de 1 879. Vérification de
+cohérence avec M07 : avant déduplication, 1 738 + 141 = 1 879 lignes en
+406 + 47 = 453 combinaisons.
+
+Après déduplication (le cas retenu) :
+
+- **Test (jour 1)**, 1 023 196 lignes : 47 combinaisons normal+attaque
+  (140 lignes) ; **54 erreurs binaires minimales**, soit une accuracy
+  binaire maximale de **99,9947 %**, c'est-à-dire 0,0053 point perdu.
+  Règle majoritaire : 17 faux positifs, 11 faux négatifs, 25 groupes ex
+  aequo (26 erreurs, à répartir entre FP et FN). Taux de faux positifs
+  plancher : 0,0017 % des normaux. Rappel plafond sur les attaques : 99,9230 %
+  (hors ex aequo). Les 11 faux négatifs sont tous du Fuzzers.
+- **Entraînement (jour 2)**, 1 036 218 lignes : 406 combinaisons
+  normal+attaque (1 729 lignes) ; 648 erreurs binaires minimales ; accuracy
+  maximale 99,9375 % (0,0625 point perdu). Faux négatifs de la règle
+  majoritaire : 227, tous du Fuzzers. Cette borne ne limite pas le score de
+  test ; elle dit combien de bruit d'étiquette le modèle supervisé voit à
+  l'entraînement.
+- **Au niveau des familles (multiclasse)**, le plafond est plus bas : 337
+  combinaisons à plusieurs classes au test (1 499 lignes), au minimum 1 121
+  erreurs, soit une accuracy multiclasse maximale de 99,8904 %. Rapporté aux
+  14 278 attaques du test, ces erreurs représentent **au plus 7,9 %**
+  d'attaques dont la famille est irréductiblement ambiguë (le total compte
+  aussi d'éventuelles erreurs sur des normaux ; la part exacte par famille
+  n'est pas calculée). En entraînement : 10 414 erreurs, accuracy multiclasse
+  maximale 98,9950 %.
+
+Avant déduplication, mêmes grandeurs : test 54 erreurs binaires (99,9950 %),
+2 591 erreurs multiclasses ; entraînement 652 (99,9551 %) et 21 256.
+
+Lecture :
+
+- En points d'accuracy binaire, la borne est quasi nulle (0,0053 point au
+  test) : **les contradictions normal/attaque ne limitent pas sérieusement le
+  score global**. L'accuracy est de toute façon la mauvaise mesure ici ; le
+  plafond intéressant est celui des Fuzzers (le seul type d'attaque qui se
+  retrouve classé « normal » par la majorité : 11 lignes au test) et celui des
+  familles entre elles.
+- Ce plafond est une borne supérieure : il ne compte que les lignes
+  *exactement* identiques sur les 41 colonnes. Des lignes très proches mais
+  non identiques, que le modèle ne sait pas séparer, ne sont pas comptées.
+  Le plafond réel est donc inférieur ou égal à ces valeurs.
+- Ces plafonds sont à rapporter tels quels dans le README (section
+  limites), à côté de la mention de la labellisation contestée.
