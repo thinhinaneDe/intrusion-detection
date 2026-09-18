@@ -50,3 +50,14 @@ min_frequency = 0.001
 # le prétraitement ne diffère pas entre B et C ; en dessous, log1p sur-corrige
 # (Dload, dmeansz : l'asymétrie change de signe et grandit en valeur absolue).
 log1p_skew_threshold = 2.0
+
+[evaluation]
+# Budgets de faux positifs rapportés : part des flux normaux qui déclenchent une
+# alerte. Au débit mesuré d'environ 80 000 flux normaux par heure (M15) :
+# 1 % ~ 800 fausses alertes/h, 0,1 % ~ 80, 0,01 % ~ 8.
+fpr_budgets = [0.01, 0.001, 0.0001]
+# Budget de référence pour la comparaison entre modèles (M16). À revoir à la
+# lecture si le rappel à ce budget manque de contraste.
+reference_fpr = 0.001
+# Niveau des intervalles de confiance de Wilson (1 - confidence_alpha).
+confidence_alpha = 0.05

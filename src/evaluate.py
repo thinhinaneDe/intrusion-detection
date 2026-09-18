@@ -1,22 +1,41 @@
-"""Évaluation : marquage des jumeaux et rappel par famille.
+"""Évaluation : seuil par budget de faux positifs, métriques, rappel par famille.
 
-État actuel : seulement ce qu'exige la lecture des résultats sur Reconnaissance
-(M11). Dans le témoin A, environ un quart des lignes de test de cette famille
-ont un jumeau exact (mêmes 41 features) dans l'entraînement ; le rappel doit
-donc être rapporté séparément avec et sans jumeau. Les métriques par famille
-complètes, les seuils et les matrices de confusion viendront avec les modèles.
+Le seuil de décision n'est jamais la valeur par défaut d'une bibliothèque : il
+est calibré pour un budget de faux positifs (part des flux normaux qui
+déclenchent une alerte) sur des scores de flux normaux que le modèle n'a pas
+vus (M16). Le test ne sert jamais à régler un seuil ; on y lit seulement le
+taux de faux positifs obtenu, à comparer au taux visé.
 
 Un « jumeau » est une ligne d'entraînement du jeu évalué dont les 41 features
 (valeurs nettoyées, avant encodage et scaler) sont identiques, quelle que soit
-son étiquette. Le marquage dépend du jeu : une ligne de test peut avoir un
-jumeau dans A et pas dans C.
+son étiquette (M11). Le rappel est rapporté séparément avec et sans jumeau,
+notamment pour Reconnaissance, dont environ un quart des lignes de test ont un
+jumeau dans le témoin A. Le marquage dépend du jeu évalué.
+
+Les scores sont des scores d'anomalie : plus grand = plus suspect. Une alerte
+est déclenchée quand le score est strictement supérieur au seuil.
 """
 
 import json
 from pathlib import Path
+from statistics import NormalDist
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import average_precision_score
+
+
+def wilson(p: float, n: int, alpha: float = 0.05) -> tuple[float, float]:
+    """Intervalle de Wilson de niveau 1 - alpha pour une proportion p sur n essais.
+
+    Suppose des observations indépendantes, ce qui est optimiste pour des flux
+    issus d'une même rafale.
+    """
+    z = NormalDist().inv_cdf(1 - alpha / 2)
+    denom = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return float(center - half), float(center + half)
 
 
 def row_hashes(df: pd.DataFrame, cols: list[str]) -> np.ndarray:
@@ -49,25 +68,118 @@ def twin_flags(name: str, processed_dir: Path = Path("data/processed")) -> pd.Da
     return mark_twins(test, train, cols)
 
 
-def recall_by_family(family, y_true, y_pred, has_twin=None) -> pd.DataFrame:
+def threshold_for_fpr(normal_scores, fpr: float) -> float:
+    """Seuil tel qu'au plus `fpr` des scores normaux lui soient strictement supérieurs.
+
+    `normal_scores` doit provenir de flux normaux non vus par le modèle qui les
+    note (scores hors échantillon). Avec des scores égaux, le taux réel sur ces
+    scores peut être inférieur au budget, jamais supérieur.
+    """
+    return float(np.quantile(np.asarray(normal_scores), 1 - fpr, method="higher"))
+
+
+def _rate(hits: int, n: int, alpha: float) -> tuple[float, float, float]:
+    """(taux, borne basse, borne haute de Wilson) ; NaN si n = 0."""
+    if n == 0:
+        return np.nan, np.nan, np.nan
+    lo, hi = wilson(hits / n, n, alpha)
+    return hits / n, lo, hi
+
+
+def recall_by_family(family, y_true, y_pred, has_twin=None, alpha: float = 0.05) -> pd.DataFrame:
     """Rappel de détection par famille d'attaque, avec découpe optionnelle par jumeau.
 
-    `y_pred` vaut 1 quand la ligne est signalée comme attaque. Les lignes
-    normales sont ignorées ici (le taux de faux positifs se calcule à part).
-    Avec `has_twin`, ajoute pour chaque famille l'effectif et le rappel des
-    lignes avec jumeau (`*_twin`) et sans jumeau (`*_no_twin`) ; un sous-ensemble
-    vide donne NaN plutôt qu'un rappel inventé.
+    `y_pred` vaut 1 (ou True) quand la ligne est signalée comme attaque. Les
+    lignes normales sont ignorées ici (le taux de faux positifs se calcule à
+    part). Colonnes : effectif `n`, détections `hits`, `recall` et son intervalle
+    de Wilson `recall_lo`, `recall_hi`. Avec `has_twin`, les mêmes grandeurs pour
+    les lignes avec jumeau (`*_twin`) et sans jumeau (`*_no_twin`) ; un
+    sous-ensemble vide donne NaN plutôt qu'un rappel inventé.
     """
     family, y_true = np.asarray(family), np.asarray(y_true)
-    hit = np.asarray(y_pred) == 1
+    hit = np.asarray(y_pred).astype(bool)
     twin = None if has_twin is None else np.asarray(has_twin, dtype=bool)
     rows = []
     for fam in sorted(set(family[y_true == 1])):
         m = (family == fam) & (y_true == 1)
-        row = {"family": fam, "n": int(m.sum()), "recall": float(hit[m].mean())}
+        r, lo, hi = _rate(int(hit[m].sum()), int(m.sum()), alpha)
+        row = {"family": fam, "n": int(m.sum()), "hits": int(hit[m].sum()),
+               "recall": r, "recall_lo": lo, "recall_hi": hi}
         if twin is not None:
             for suffix, sub in (("twin", m & twin), ("no_twin", m & ~twin)):
-                row[f"n_{suffix}"] = int(sub.sum())
-                row[f"recall_{suffix}"] = float(hit[sub].mean()) if sub.any() else np.nan
+                r, lo, hi = _rate(int(hit[sub].sum()), int(sub.sum()), alpha)
+                row.update({f"n_{suffix}": int(sub.sum()), f"hits_{suffix}": int(hit[sub].sum()),
+                            f"recall_{suffix}": r, f"recall_{suffix}_lo": lo,
+                            f"recall_{suffix}_hi": hi})
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def evaluate_scores(y_true, family, scores, calibration_scores, budgets, stime,
+                    has_twin=None, alpha: float = 0.05) -> dict:
+    """Évalue des scores d'anomalie à chaque budget de faux positifs.
+
+    `calibration_scores` : scores de flux normaux non vus par le modèle, dont on
+    tire un seuil par budget (`threshold_for_fpr`). `stime` : horodatages du
+    test, pour le nombre de fausses alertes par heure. Retourne l'AUC-PR (AP,
+    indépendante du seuil) et, par budget : seuil, taux de faux positifs sur la
+    calibration et sur le test (avec intervalle de Wilson), fausses alertes par
+    heure (moyenne et pire heure), rappel global et par famille.
+    """
+    y_true, scores, stime = np.asarray(y_true), np.asarray(scores), np.asarray(stime)
+    calibration_scores = np.asarray(calibration_scores)
+    normal, attack = y_true == 0, y_true == 1
+    span_h = float((stime.max() - stime.min()) / 3600)
+    out = {"average_precision": float(average_precision_score(y_true, scores)),
+           "prevalence": float(attack.mean()), "n_normal": int(normal.sum()),
+           "n_attack": int(attack.sum()), "span_hours": span_h, "budgets": {}}
+    for b in budgets:
+        t = threshold_for_fpr(calibration_scores, b)
+        alert = scores > t
+        fp = alert & normal
+        hourly = pd.Series((stime[fp] // 3600).astype(np.int64)).value_counts()
+        fpr, fpr_lo, fpr_hi = _rate(int(fp.sum()), int(normal.sum()), alpha)
+        rec, rec_lo, rec_hi = _rate(int((alert & attack).sum()), int(attack.sum()), alpha)
+        out["budgets"][str(b)] = {
+            "fpr_target": b, "threshold": t,
+            "fpr_calibration": float((calibration_scores > t).mean()),
+            "fpr_test": fpr, "fpr_test_lo": fpr_lo, "fpr_test_hi": fpr_hi,
+            "false_positives": int(fp.sum()),
+            "false_alerts_per_hour_mean": float(fp.sum() / span_h),
+            "false_alerts_max_hour": int(hourly.max()) if len(hourly) else 0,
+            "recall": rec, "recall_lo": rec_lo, "recall_hi": rec_hi,
+            "by_family": recall_by_family(family, y_true, alert, has_twin, alpha)
+            .to_dict(orient="records"),
+        }
+    return out
+
+
+def _pct(x: float, digits: int = 2) -> str:
+    return "  n/a" if x is None or np.isnan(x) else f"{100 * x:.{digits}f} %"
+
+
+def print_report(res: dict, reference: float) -> None:
+    """Affiche AUC-PR, rappel aux budgets, taux visé contre observé et rappel par famille."""
+    print(f"AUC-PR (précision moyenne) : {res['average_precision']:.4f} "
+          f"(référence d'un score aléatoire = prévalence : {_pct(res['prevalence'], 3)})")
+    print(f"Test : {res['n_normal']} normaux, {res['n_attack']} attaques, "
+          f"étendue {res['span_hours']:.1f} h")
+    print("\nTaux de faux positifs visé contre observé, et rappel global :")
+    for key, b in res["budgets"].items():
+        print(f"  budget {_pct(b['fpr_target'], 3)} : seuil {b['threshold']:.4f} ; "
+              f"calibration {_pct(b['fpr_calibration'], 4)} ; "
+              f"test {_pct(b['fpr_test'], 4)} [{_pct(b['fpr_test_lo'], 4)} ; "
+              f"{_pct(b['fpr_test_hi'], 4)}] ({b['false_positives']} faux positifs, "
+              f"{b['false_alerts_per_hour_mean']:.1f} fausses alertes/h en moyenne, "
+              f"{b['false_alerts_max_hour']} la pire heure) ; "
+              f"rappel {_pct(b['recall'])} [{_pct(b['recall_lo'])} ; {_pct(b['recall_hi'])}]")
+    for key, b in res["budgets"].items():
+        ref = " (budget de référence)" if b["fpr_target"] == reference else ""
+        print(f"\nRappel par famille, budget {_pct(b['fpr_target'], 3)}{ref} :")
+        for r in b["by_family"]:
+            line = (f"  {r['family']:15s} n={r['n']:5d}  rappel {_pct(r['recall'])} "
+                    f"[{_pct(r['recall_lo'])} ; {_pct(r['recall_hi'])}]")
+            if "n_twin" in r:
+                line += (f"  | avec jumeau n={r['n_twin']:4d} {_pct(r['recall_twin'])}"
+                         f"  | sans jumeau n={r['n_no_twin']:5d} {_pct(r['recall_no_twin'])}")
+            print(line)

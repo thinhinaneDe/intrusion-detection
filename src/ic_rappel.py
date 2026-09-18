@@ -19,20 +19,11 @@ import argparse
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from statistics import NormalDist
 
+from evaluate import wilson
 from inspect_duplicates import IDX_ATTACK_CAT, IDX_STIME, N_COLS, canon_class, digest, read_rows
 
 SIDES = {2: "jour 2 (entraînement)", 1: "jour 1 (test)"}
-
-
-def wilson(p: float, n: int, alpha: float) -> tuple[float, float]:
-    """Intervalle de Wilson pour une proportion p observée sur n essais."""
-    z = NormalDist().inv_cdf(1 - alpha / 2)
-    denom = 1 + z * z / n
-    center = (p + z * z / (2 * n)) / denom
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return center - half, center + half
 
 
 def _log_pmf(k: int, n: int, p: float) -> float:
