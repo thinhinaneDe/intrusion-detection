@@ -94,12 +94,22 @@ flux normaux et 321 283 attaques.
 - **Date** : les données du second jour tombent le 18-02-2015 en UTC, le `ReadMe.pdf` dit le 17-02.
   Écart non élucidé.
 
-**Obtenir les données.** Les fichiers sont à télécharger depuis le lien SharePoint de la page du
-projet ci-dessus (il n'y a pas de script de téléchargement : le lien nécessite un navigateur) et à
-placer dans `data/raw/` : `UNSW-NB15_1.csv` à `UNSW-NB15_4.csv`, `NUSW-NB15_features.csv`,
-`UNSW-NB15_LIST_EVENTS.csv` et `ReadMe.pdf` (586 Mo). Le dossier `data/` est ignoré par git : aucune
-donnée n'est versionnée. Les jeux déjà partitionnés `UNSW_NB15_training-set.csv` et
-`UNSW_NB15_testing-set.csv` ne sont pas utilisés.
+**Obtenir les données.** Le téléchargement est **manuel** : la page du projet ci-dessus renvoie
+vers un partage SharePoint qui exige un navigateur, sans URL de fichier stable qu'un script
+pourrait appeler. Récupérer depuis ce partage les six fichiers CSV `UNSW-NB15_1.csv` à
+`UNSW-NB15_4.csv`, `NUSW-NB15_features.csv` et `UNSW-NB15_LIST_EVENTS.csv` (586 Mo), et les placer
+sans les renommer dans `data/raw/` ; le `ReadMe.pdf` du partage (licence, citations, dates) est
+utile à lire mais pas requis. Puis :
+
+```bash
+venv/bin/python src/download.py    # ou : make check-data
+```
+
+Ce script ne télécharge rien : il vérifie la présence des six fichiers et leur empreinte SHA-256
+(`[download.sha256]` de `config.toml`), celle des fichiers qui ont produit toutes les mesures, et
+indique la page officielle et les noms attendus si un fichier manque ou diffère. Le dossier `data/`
+est ignoré par git : aucune donnée n'est versionnée. Les jeux déjà partitionnés
+`UNSW_NB15_training-set.csv` et `UNSW_NB15_testing-set.csv` ne sont pas utilisés.
 
 ## 3. Protocole expérimental
 

@@ -2530,3 +2530,28 @@ avec les 38 variables. Au seuil calibré / lu au même taux, tous · avec jumeau
 [+26,0 ; +58,3] à 0,1 % ; +67,9 [+60,4 ; +75,8] à 0,01 %. La contamination par jumeaux gonfle le
 rappel global de A et de B aux budgets stricts sans expliquer l'écart B − C.
 
+
+---
+
+## M30 — Empreintes SHA-256 des fichiers bruts (2026-10-01)
+
+Commandes :
+
+    sha256sum data/raw/*
+    venv/bin/python src/download.py
+
+Empreintes des six fichiers CSV qui ont produit toutes les mesures de ce journal, recopiées dans
+`[download.sha256]` de `config.toml` et vérifiées par `src/download.py` (« Tous les fichiers sont
+présents et intègres », 4,6 s) :
+
+- `UNSW-NB15_1.csv` : `7d851bbeabd27894ce39c8e78835c73341fc946652fb7743b9eff193b55eb511`
+- `UNSW-NB15_2.csv` : `6130ad02873cc6069ae695cf2844f2e8c2e9a9a1b7532dd82ab8f202757cacf8`
+- `UNSW-NB15_3.csv` : `ae990a96c3dfcd425ce2801aadb1727a34d5e0ae6d8215dbcdae60dedfaef640`
+- `UNSW-NB15_4.csv` : `cdf563692d51d405541dd659ddcdad9fa01f001f05fe9fc4b67f00ca12fbc96a`
+- `NUSW-NB15_features.csv` : `c55f19cceebb6360dc50f44f8a5f246ccefbcf8a6c604ac1ad46e643869cafce`
+- `UNSW-NB15_LIST_EVENTS.csv` : `5b40f8128e2c87e691157c76debde04c328b0eb66bab97f1e7e17625f84497f2`
+
+`ReadMe.pdf` (`d32464d62346c12a7caa7b140d3c26cb9fd3f97898c3bddb49a8db5375ee6608`) n'est pas
+vérifié : il documente le jeu mais aucun script ne le lit. Contrôle du message d'erreur : sur un
+dossier ne contenant que deux des six fichiers, dont un modifié d'un octet, le script signale 4
+absents et 1 différent, rappelle la page officielle et les noms attendus, et sort avec le code 1.
