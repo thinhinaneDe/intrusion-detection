@@ -507,10 +507,27 @@ compte que 24 lignes (un flux vaut 4,2 points), toutes les attaques du test tomb
 zéro, alors qu'un intervalle à 95 % exclut zéro à tort une fois sur vingt en l'absence d'effet. L'écart sur
 Worms est le seul dont l'ordre de grandeur rejoint celui des familles retirées.
 
-**Ce n'est pas un effet de volume, ni de mémorisation.** L'écart A − B, qui mesure le volume seul, est
-faible ou de signe incertain (par exemple −6,4 points [−11,5 ; −2,3] sur Reconnaissance à 0,01 %, sans
-TTL) ; il n'est pas interprété (§6, variabilité d'entraînement non mesurée). Et l'écart B − C sur
-Reconnaissance persiste sans les lignes à jumeau : +67,9 points [+60,4 ; +75,8] à 0,01 %.
+**Sur le groupe des sept familles, le sens de l'écart s'inverse avec le budget** : C fait mieux que B
+à 0,1 % (B − C −5,8 [−11,6 ; −1,5]) et moins bien à 0,01 % (+2,3 [+0,01 ; +3,8], borne basse à peine
+au-dessus de zéro). Lecture proposée, non testée : au budget lâche, le surcroît d'exemples des sept
+familles dans C l'emporte ; au budget strict, il ne compense plus ce que l'absence d'Exploits et de
+Reconnaissance coûte à la frontière de décision.
+
+**La perte n'est expliquée ni par la mémorisation, ni par le volume d'exemples de la famille.**
+L'écart B − C sur Reconnaissance persiste sans les lignes de test qui ont un jumeau exact à
+l'entraînement : +67,9 points [+60,4 ; +75,8] à 0,01 % (tableau 10). Sur Worms, C a vu 147 exemples et
+B 86 ; C en détecte pourtant 4 sur 24 contre 16 pour B à 0,01 % : avoir vu davantage la famille ne
+l'a pas protégée.
+
+**Ce que l'écart A − B permet de dire, et ce qu'il ne permet pas.** A et B ont la même composition,
+mais A a 1,70 fois plus d'attaques. Sur les deux familles retirées, ce surcroît déplace le rappel
+d'au plus 7 points (de −0,6 à −6,9, tableau 9), un ordre de grandeur sous les écarts B − C (+4,0 à
++75,9). Cela suffit à écarter l'idée que la perte de C s'explique par un volume total d'attaques
+moindre : B a le même volume que C et ne la subit pas. En revanche, A − B ne permet pas de conclure
+sur l'effet du volume lui-même. À 0,01 %, il est négatif et exclut zéro (Reconnaissance −6,4
+[−11,5 ; −2,3], Exploits −6,9 [−11,4 ; −3,2]), ce qui voudrait dire que plus d'exemples nuit. Or avec
+une seule exécution d'entraînement par condition, un écart de cette taille peut venir de la
+variabilité d'entraînement, non mesurée (§6) : son signe n'est pas interprété.
 
 **Ce que le TTL offrait.** Les flux normaux ont un TTL source de 31 dans 94,0 % des cas au jour 2 et
 98,3 % au jour 1 ; `ct_state_ttl` vaut 1 ou 2 pour 98,7 % des attaques du jour 2 et 98,8 % de celles
