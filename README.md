@@ -588,12 +588,22 @@ qui influencent un résultat (chemins, graines, seuils, hyperparamètres) sont d
 
 **Prérequis** : Python 3.12, environ 8 Go de RAM (la préparation atteint environ 4,5 Go), aucun GPU. Le
 temps de calcul varie d'un facteur 3 selon le moment sur la machine utilisée (mesuré) ; les durées
-ci-dessous sont indicatives.
+ci-dessous sont indicatives. `make` (GNU Make) est facultatif : le `Makefile` ne fait qu'enchaîner
+les commandes ci-dessous (`sudo apt install make` s'il manque).
+
+```bash
+make venv          # environnement et dépendances figées
+make check-data    # vérifie les six CSV de data/raw/ (§2)
+make all           # étapes 1 à 4 ci-dessous, dans l'ordre
+```
+
+Les mêmes commandes, une à une :
 
 ```bash
 python3.12 -m venv venv
 venv/bin/pip install -r requirements.txt     # versions figées ; PyTorch en version CPU
-# Placer les fichiers du jeu dans data/raw/ (voir §2), puis :
+# Placer les six CSV du jeu dans data/raw/ (voir §2), puis vérifier leur intégrité :
+venv/bin/python src/download.py
 
 # 1. Préparation (86 s) : découpage, déduplication, jeux unsup, A, B, C et test ; contrôles d'intégrité
 venv/bin/python src/prepare.py
@@ -635,5 +645,4 @@ identiques bit à bit, la préparation donne un manifeste identique et un tirage
 `autoencoder.py`, `supervised.py`, `calibration.py`), `src/evaluate.py` (seuils, métriques, jumeaux),
 `config*.toml`, `report/mesures.md` (journal de mesures).
 
-**Non encore écrit** : un `Makefile` qui enchaîne ces commandes, un script `src/download.py` (le
-téléchargement est manuel, voir §2) et le notebook `notebooks/resultats.ipynb`.
+**Non encore écrit** : le notebook `notebooks/resultats.ipynb`.
