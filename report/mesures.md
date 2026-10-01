@@ -2636,7 +2636,7 @@ Sans TTL (* : l'intervalle exclut zéro) :
 
 Avec TTL : Worms +0,0 [−7,4 ; +0,0] (0,1 %) et −4,2 [−23,1 ; +9,4] (0,01 %) ; Shellcode −2,7
 [−13,9 ; +2,2] et +3,1 [−12,8 ; +9,8] ; DoS −0,4 [−3,1 ; +1,7] et +1,3 [−4,2 ; +5,9] ; Fuzzers −19,7
-[−32,4 ; −8,7] * et −5,2 [−11,5 ; −0,7] * ; groupe −9,1 [−14,6 ; −3,9] * et −2,3 [−6,6 ; −0,0] *.
+[−32,4 ; −8,7] * et −5,2 [−11,5 ; −0,7] * ; groupe −9,1 [−14,6 ; −3,9] * et −2,3 [−6,6 ; −0,03] *.
 
 ### Lecture
 
@@ -2648,8 +2648,9 @@ Avec TTL : Worms +0,0 [−7,4 ; +0,0] (0,1 %) et −4,2 [−23,1 ; +9,4] (0,01 %
   proximité de comportement entre Worms et Exploits dans ces données.
 - **À 0,1 %, C fait mieux que B** sur Fuzzers, Shellcode et le groupe des sept : sens attendu du
   surcroît d'exemples.
-- **Avec TTL, l'écart sur Worms disparaît** (−4,2 [−23,1 ; +9,4]) : la signature TTL, commune à 98 %
-  des attaques (M24), porte la détection de Worms indépendamment des familles vues.
+- **Avec TTL, l'écart sur Worms disparaît** (−4,2 [−23,1 ; +9,4]). Hypothèse non vérifiée : la
+  signature TTL, commune à 98 % des attaques (M24), porterait la détection de Worms indépendamment
+  des familles vues.
 - **Réserves** : 24 lignes de Worms (un flux vaut 4,2 points ; 12 flux séparent B de C), 12 blocs
   porteurs d'attaques, une seule exécution d'entraînement par condition (M27), et 4 des 14 écarts
   B − C sans TTL sur ces sept familles excluent zéro, sans correction de multiplicité (un intervalle à
