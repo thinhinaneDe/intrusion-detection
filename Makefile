@@ -5,9 +5,10 @@
 #   make venv        environnement virtuel et dépendances figées
 #   make check-data  présence et intégrité des six CSV bruts (téléchargement manuel, README §2)
 #   make all         toute la chaîne, de la préparation aux tables (durées par étape : README §7)
+#   make notebook    réexécute notebooks/resultats.ipynb (lit les résultats, ne relance aucun modèle)
 #
 # Les étapes intermédiaires peuvent être lancées seules, dans l'ordre :
-# prepare, models-ttl, prepare-sans-ttl, models-sans-ttl, intervals, tables.
+# prepare, models-ttl, prepare-sans-ttl, models-sans-ttl, intervals, tables, notebook.
 
 PYTHON  ?= python3.12
 VENV    := venv
@@ -15,9 +16,9 @@ PY      := $(VENV)/bin/python
 AVEC    := config.toml
 SANS    := config_sans_ttl.toml
 
-.PHONY: all venv check-data prepare models-ttl prepare-sans-ttl models-sans-ttl intervals tables
+.PHONY: all venv check-data prepare models-ttl prepare-sans-ttl models-sans-ttl intervals tables notebook
 
-all: check-data prepare models-ttl prepare-sans-ttl models-sans-ttl intervals tables
+all: check-data prepare models-ttl prepare-sans-ttl models-sans-ttl intervals tables notebook
 
 venv:
 	$(PYTHON) -m venv $(VENV)
@@ -58,3 +59,7 @@ intervals:
 
 tables:
 	$(PY) src/report_tables.py
+
+# 5. Figures : le notebook lit block_ci.json des deux versions ; figures enregistrées dans le .ipynb.
+notebook:
+	$(VENV)/bin/jupyter-execute --inplace notebooks/resultats.ipynb

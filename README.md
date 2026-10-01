@@ -594,7 +594,7 @@ les commandes ci-dessous (`sudo apt install make` s'il manque).
 ```bash
 make venv          # environnement et dépendances figées
 make check-data    # vérifie les six CSV de data/raw/ (§2)
-make all           # étapes 1 à 4 ci-dessous, dans l'ordre
+make all           # étapes 1 à 5 ci-dessous, dans l'ordre
 ```
 
 Les mêmes commandes, une à une :
@@ -629,6 +629,9 @@ for c in config.toml config_sans_ttl.toml; do
 done
 venv/bin/python src/compare_ablation.py
 venv/bin/python src/report_tables.py
+
+# 5. Figures (quelques secondes) : le notebook lit les résultats écrits, ne relance aucun modèle
+venv/bin/jupyter-execute --inplace notebooks/resultats.ipynb
 ```
 
 Les jeux et les résultats sont écrits dans `data/processed/` (avec TTL) et `data/processed_sans_ttl/`,
@@ -641,8 +644,13 @@ identiques bit à bit, la préparation donne un manifeste identique et un tirage
 `inspect_columns.py`, `inspect_skew.py`, `inspect_debit.py`, `inspect_normals.py`, `inspect_ttl.py`,
 `bench_autoencoder.py` et `bench_supervised.py` (coûts).
 
-**Organisation du dépôt** : `src/prepare.py` (données), `src/models/` (`isolation_forest.py`,
+**Organisation du dépôt** : `src/download.py` (vérification des fichiers bruts), `src/prepare.py`
+(données), `src/models/` (`isolation_forest.py`,
 `autoencoder.py`, `supervised.py`, `calibration.py`), `src/evaluate.py` (seuils, métriques, jumeaux),
-`config*.toml`, `report/mesures.md` (journal de mesures).
+`config*.toml`, `Makefile`, `notebooks/resultats.ipynb` (figures), `report/mesures.md` (journal de mesures).
 
-**Non encore écrit** : le notebook `notebooks/resultats.ipynb`.
+**Figures** : [`notebooks/resultats.ipynb`](notebooks/resultats.ipynb), exécuté et enregistré avec ses
+sorties, quatre figures tracées depuis `block_ci.json` (mêmes points et intervalles par blocs que les
+tables ci-dessus) : rappel de A, B, C sur les familles retirées avec et sans TTL ; comparaison des
+modèles au budget de référence ; calibration (taux de faux positifs visé contre observé) ; rappel par
+famille de A, B, C sans TTL.
