@@ -32,10 +32,12 @@ l'effet d'une famille absente à l'entraînement.
    [1,7 ; 4,3].
 3. **Le supervisé reste très bon sans TTL** : AUC-PR 0,948 [0,905 ; 0,968] (condition A), rappel de
    75,8 % [69,6 ; 82,2] à 0,1 % de faux positifs.
-4. **Retirer une famille de l'entraînement coûte cher, et de façon spécifique.** Écart de rappel
-   entre le témoin à volume égal (B) et le traitement (C), à 0,01 % de faux positifs : Reconnaissance
-   +75,9 points [+69,3 ; +82,0], Exploits +28,3 [+20,8 ; +33,4]. Sur les sept autres familles, A, B et
-   C sont indiscernables.
+4. **Retirer une famille de l'entraînement coûte cher.** Écart de rappel entre le témoin à volume
+   égal (B) et le traitement (C), à 0,01 % de faux positifs : Reconnaissance +75,9 points [+69,3 ;
+   +82,0], Exploits +28,3 [+20,8 ; +33,4]. **La perte n'est pas strictement limitée aux familles
+   retirées** : sur Worms, que C a vue (et plus que B), B − C vaut +50,0 points [+21,4 ; +62,5] à 0,01 %
+   (24 lignes de test) ; sur l'ensemble des sept autres familles, les écarts appariés sont de quelques
+   points, de signe variable selon le budget (tableau 11).
 5. **Limite qui borne toutes ces conclusions** : le protocole mesure ce qu'un raccourci identifié
    (le TTL) offrait ; il ne prouve pas qu'il n'en reste aucun (§6).
 
@@ -133,7 +135,9 @@ test 1 023 196 lignes (1 008 918 normaux, 14 278 attaques, prévalence 1,395 %).
 
 A − B mesure l'effet du volume seul ; **B − C mesure l'effet d'une famille inédite à volume
 constant** : c'est l'écart qui répond à la question. Sans B, on confondrait « famille absente » et
-« 41 % d'attaques en moins ».
+« 41 % d'attaques en moins ». À volume égal, la composition diffère : C contient 1,70 fois plus
+d'exemples de chacune des sept autres familles que B. Sur ces familles, B − C n'est donc pas un
+témoin pur (§4.1, tableau 11).
 
 **Pourquoi Exploits et Reconnaissance** : ce sont les deux familles où la mesure au test est la plus
 précise, et elles sont conceptuellement distinctes (exploitation d'une vulnérabilité contre balayage
@@ -304,8 +308,9 @@ interprétables individuellement) :
 | Shellcode (223) | 0.0 [0.0 ; 0.0] | 0.0 [0.0 ; 0.0] | 0.0 [0.0 ; 0.0] | 12.1 [5.4 ; 18.6] | 21.5 [10.0 ; 31.3] | 17.9 [8.5 ; 31.1] |
 | Worms (24) | 0.0 [0.0 ; 0.0] | 0.0 [0.0 ; 0.0] | 8.3 [0.0 ; 21.1] | 62.5 [40.6 ; 78.6] | 66.7 [46.2 ; 83.3] | 16.7 [8.7 ; 38.7] |
 
-**Les deux régimes** — sur les sept autres familles, A, B et C sont indiscernables ; sur les familles
-retirées de C, C chute :
+**Les deux régimes** — sur les familles retirées de C, C chute de plusieurs dizaines de points ; sur
+les sept autres, les intervalles non appariés du tableau 8 se recouvrent, mais les écarts appariés
+(tableau 11) ne sont pas tous nuls :
 
 **Tableau 8.** Sans TTL, deux régimes : familles retirées de C contre les sept autres (rappel lu au même taux, en %)
 
@@ -344,11 +349,38 @@ Sans jumeau dans A, B ni C, l'écart B − C sur Reconnaissance reste net :
 | 0.1 % | +45.7 [+26.0 ; +58.3] |
 | 0.01 % | +67.9 [+60.4 ; +75.8] |
 
+**Familles non retirées : écarts appariés.** Même méthode que le tableau 9, appliquée aux sept familles
+que C a vues et à leur groupe. Attention en lisant B − C sur ces familles : **C en a vu 1,70 fois plus
+d'exemples que B** (C garde toutes les attaques non retirées, B en tire 50 191 parmi les neuf
+familles) ; B − C y mêle donc l'absence d'Exploits et de Reconnaissance et un surcroît d'exemples de la
+famille elle-même. Sur le groupe à 0,01 %, la borne basse de B − C est +0,01 point.
+
+**Tableau 11.** Sans TTL : écarts appariés B − C et A − B sur les sept familles non retirées et leur groupe (rappel lu au même taux, points, IC par blocs apparié ; * : l'intervalle exclut zéro)
+
+| Famille (n test) | Budget | Rappel A / B / C | A − B | B − C |
+|---|---|---|---|---|
+| Analysis (301) | 0.1 % | 80.7 / 81.1 / 81.1 | -0.3 [-1.8 ; +0.0] | +0.0 [+0.0 ; +0.0] |
+| Analysis (301) | 0.01 % | 80.4 / 79.4 / 80.1 | +1.0 [+0.0 ; +9.4] | -0.7 [-1.5 ; +40.0] |
+| Backdoors (299) | 0.1 % | 96.7 / 96.7 / 97.0 | +0.0 [-5.1 ; +5.6] | -0.3 [-10.2 ; +3.5] |
+| Backdoors (299) | 0.01 % | 91.3 / 92.0 / 89.0 | -0.7 [-20.0 ; +2.4] | +3.0 [-1.5 ; +30.9] |
+| DoS (825) | 0.1 % | 89.0 / 89.9 / 88.8 | -1.0 [-2.7 ; +0.5] | +1.1 [-1.5 ; +3.9] |
+| DoS (825) | 0.01 % | 65.7 / 70.1 / 58.9 | -4.4 [-13.4 ; +0.7] | +11.2 [+2.8 ; +22.6] * |
+| Fuzzers (3991) | 0.1 % | 29.8 / 28.5 / 40.2 | +1.3 [-1.0 ; +3.7] | -11.7 [-21.9 ; -4.0] * |
+| Fuzzers (3991) | 0.01 % | 7.1 / 7.8 / 7.1 | -0.7 [-2.3 ; +0.2] | +0.8 [-1.0 ; +2.2] |
+| Generic (2833) | 0.1 % | 98.1 / 98.4 / 98.8 | -0.3 [-0.9 ; +0.2] | -0.4 [-1.0 ; +0.4] |
+| Generic (2833) | 0.01 % | 89.5 / 92.7 / 91.2 | -3.2 [-5.1 ; -2.4] * | +1.6 [-0.7 ; +3.1] |
+| Shellcode (223) | 0.1 % | 78.9 / 74.0 / 84.3 | +4.9 [-0.7 ; +9.5] | -10.3 [-14.6 ; -3.8] * |
+| Shellcode (223) | 0.01 % | 12.1 / 21.5 / 17.9 | -9.4 [-18.3 ; +0.0] | +3.6 [-10.6 ; +12.4] |
+| Worms (24) | 0.1 % | 95.8 / 91.7 / 95.8 | +4.2 [-5.4 ; +17.7] | -4.2 [-17.6 ; +0.0] |
+| Worms (24) | 0.01 % | 62.5 / 66.7 / 16.7 | -4.2 [-16.7 ; +0.0] | +50.0 [+21.4 ; +62.5] * |
+| **sept autres familles** | 0.1 % | 63.9 / 63.4 / 69.2 | +0.6 [-0.6 ; +2.0] | -5.8 [-11.6 ; -1.5] * |
+| **sept autres familles** | 0.01 % | 46.1 / 48.2 / 45.9 | -2.1 [-3.9 ; -0.8] * | +2.3 [+0.0 ; +3.8] * |
+
 **Contamination par jumeaux.** 449 des 1 740 lignes de test de Reconnaissance (25,8 %) ont un jumeau
 exact (mêmes valeurs sur toutes les variables) dans A, 415 dans B, 1 dans C. La mémorisation gonfle le
 rappel global de A et de B aux budgets stricts, mais n'explique pas l'écart B − C :
 
-**Tableau 11.** Sans TTL : Reconnaissance (1 740 lignes de test), rappel avec et sans jumeau dans le jeu d'entraînement (en %, sans intervalle par blocs)
+**Tableau 12.** Sans TTL : Reconnaissance (1 740 lignes de test), rappel avec et sans jumeau dans le jeu d'entraînement (en %, sans intervalle par blocs)
 
 | Condition | Budget | Seuil | Tous | Avec jumeau | Sans jumeau |
 |---|---|---|---|---|---|
@@ -367,7 +399,7 @@ rappel global de A et de B aux budgets stricts, mais n'explique pas l'écart B �
 
 **Entre modèles non supervisés** (écarts appariés) :
 
-**Tableau 12.** Sans TTL : écarts APPARIÉS entre modèles non supervisés (points de rappel ou d'AUC-PR ; [IC par blocs])
+**Tableau 13.** Sans TTL : écarts APPARIÉS entre modèles non supervisés (points de rappel ou d'AUC-PR ; [IC par blocs])
 
 | Écart | AUC-PR | Rappel lu au même taux 1 % | Rappel lu au même taux 0.1 % | Rappel lu au même taux 0.01 % |
 |---|---|---|---|---|
@@ -379,7 +411,7 @@ rappel global de A et de B aux budgets stricts, mais n'explique pas l'écart B �
 
 Rappel lu au même taux, sans et avec les colonnes TTL :
 
-**Tableau 13.** Mesure du raccourci TTL : rappel lu au même taux 1 % (en %, [intervalle par blocs])
+**Tableau 14.** Mesure du raccourci TTL : rappel lu au même taux 1 % (en %, [intervalle par blocs])
 
 | Modèle | Sans TTL | Avec TTL |
 |---|---|---|
@@ -390,7 +422,7 @@ Rappel lu au même taux, sans et avec les colonnes TTL :
 | Supervisé B | 99.9 [99.9 ; 100.0] | 100.0 [100.0 ; 100.0] |
 | Supervisé C | 99.8 [99.7 ; 100.0] | 100.0 [100.0 ; 100.0] |
 
-**Tableau 14.** Mesure du raccourci TTL : rappel lu au même taux 0.1 % (en %, [intervalle par blocs])
+**Tableau 15.** Mesure du raccourci TTL : rappel lu au même taux 0.1 % (en %, [intervalle par blocs])
 
 | Modèle | Sans TTL | Avec TTL |
 |---|---|---|
@@ -403,7 +435,7 @@ Rappel lu au même taux, sans et avec les colonnes TTL :
 
 Écart B − C et A − B avec TTL :
 
-**Tableau 15.** Avec TTL : écarts de rappel lu au même taux, en points, IC par blocs apparié
+**Tableau 16.** Avec TTL : écarts de rappel lu au même taux, en points, IC par blocs apparié
 
 | Famille | Budget | Rappel A / B / C | A − B (volume) | B − C (famille inédite) |
 |---|---|---|---|---|
@@ -414,7 +446,7 @@ Rappel lu au même taux, sans et avec les colonnes TTL :
 
 Écarts appariés entre modèles non supervisés avec TTL :
 
-**Tableau 16.** Avec TTL : écarts APPARIÉS entre modèles non supervisés (points de rappel ou d'AUC-PR ; [IC par blocs])
+**Tableau 17.** Avec TTL : écarts APPARIÉS entre modèles non supervisés (points de rappel ou d'AUC-PR ; [IC par blocs])
 
 | Écart | AUC-PR | Rappel lu au même taux 1 % | Rappel lu au même taux 0.1 % | Rappel lu au même taux 0.01 % |
 |---|---|---|---|---|
@@ -425,7 +457,7 @@ Rappel lu au même taux, sans et avec les colonnes TTL :
 Dérive temporelle sur familles connues (supervisé, rappel des attaques du jour d'entraînement tenues à
 l'écart, au moment non vu, contre rappel du test, à seuil égal ; sans intervalle par blocs) :
 
-**Tableau 17.** Supervisé : rappel des attaques tenues à l'écart (jour 2) contre rappel du test, au seuil calibré (en %, sans intervalle par blocs)
+**Tableau 18.** Supervisé : rappel des attaques tenues à l'écart (jour 2) contre rappel du test, au seuil calibré (en %, sans intervalle par blocs)
 
 | Condition | Budget | Tenues à l'écart (jour 2) | Test, mêmes familles |
 |---|---|---|---|
@@ -454,10 +486,26 @@ l'écart, au moment non vu, contre rappel du test, à seuil égal ; sans interva
 détecte à 3,9 % à 0,01 % de faux positifs, contre 79,8 % quand il l'a vue (condition B), et à 62,5 %
 contre 97,2 % à 0,1 % (tableau 9). Pour Exploits, la perte est faible à 0,1 % (+4,0 points de
 B − C) et nette à 0,01 % (+28,3 : 49,3 % contre 77,6 %). Exploitation d'une vulnérabilité et
-balayage se comportent donc très différemment, comme le protocole le faisait espérer. La perte est
-**spécifique aux familles retirées** : sur les sept autres, C n'est pas moins bon que A ou B
-(tableau 8). Elle dépend du budget : à 1 % de faux positifs, le rappel de toutes les conditions
-est saturé à plus de 99,7 % et ne discrimine rien.
+balayage se comportent donc très différemment, comme le protocole le faisait espérer. La perte dépend
+du budget : à 1 % de faux positifs, le rappel de toutes les conditions est saturé à plus de 99,7 % et
+ne discrimine rien.
+
+**La perte déborde des familles retirées, au moins sur Worms.** Sans TTL, à 0,01 %, C détecte 4 des
+24 Worms du test, B en détecte 16 (B − C +50,0 points [+21,4 ; +62,5], tableau 11), alors que C a vu
+147 Worms à l'entraînement et B 86 : la chute survient malgré 1,7 fois plus d'exemples de la famille.
+Retirer Exploits et Reconnaissance a donc aussi dégradé la détection d'une famille présente à
+l'entraînement. Ce que cela implique : **l'effet d'une famille inédite ne se lit pas seulement sur
+cette famille** ; un modèle dont on retire des familles apprend une frontière différente, qui peut
+déplacer les scores d'autres familles proches d'elles. Pourquoi Worms en particulier n'est pas établi
+(hypothèse non vérifiée : une proximité de comportement entre Worms et Exploits dans ces données). DoS
+suit le même sens à 0,01 % (+11,2 [+2,8 ; +22,6]). À l'inverse, à 0,1 %, C fait **mieux** que B sur
+Fuzzers (−11,7 [−21,9 ; −4,0]) et Shellcode (−10,3 [−14,6 ; −3,8]), et sur le groupe des sept (−5,8
+[−11,6 ; −1,5]) : c'est le sens attendu du surcroît d'exemples. Avec TTL, l'écart sur Worms
+disparaît (−4,2 [−23,1 ; +9,4] à 0,01 %, journal M31). Trois réserves bornent la lecture : Worms ne
+compte que 24 lignes (un flux vaut 4,2 points), toutes les attaques du test tombent dans les mêmes
+12 blocs de 10 minutes (§6), et quatre des quatorze écarts B − C testés sur ces sept familles excluent
+zéro, alors qu'un intervalle à 95 % exclut zéro à tort une fois sur vingt en l'absence d'effet. L'écart sur
+Worms est le seul dont l'ordre de grandeur rejoint celui des familles retirées.
 
 **Ce n'est pas un effet de volume, ni de mémorisation.** L'écart A − B, qui mesure le volume seul, est
 faible ou de signe incertain (par exemple −6,4 points [−11,5 ; −2,3] sur Reconnaissance à 0,01 %, sans
@@ -505,7 +553,7 @@ normaux du jour d'entraînement est concentrée dans des flux d'état INT ou REQ
 fournissent 98,5 % des dépassements du seuil.
 
 **Dérive sur les familles connues.** À seuil calibré égal, le rappel du test est de 1,0 à 15,8 points
-sous celui des attaques du jour d'entraînement tenues à l'écart (sans TTL, tableau 17). Ce n'est
+sous celui des attaques du jour d'entraînement tenues à l'écart (sans TTL, tableau 18). Ce n'est
 pas une perte de capacité de détection pure : le taux de faux positifs du test est lui aussi plus bas
 que celui de la calibration, donc les scores des normaux et ceux des attaques sont décalés ensemble.
 
@@ -516,8 +564,9 @@ communes).
 **Réponse à la question.** Un modèle qui n'a jamais vu d'attaque en détecte très peu (rappel lu à
 0,1 % de faux positifs : de 0 à 1,3 % sans TTL), et le peu qu'il détecte avec le TTL est un raccourci
 du banc d'essai. Un supervisé perd, sur une famille inédite, de quelques points à plusieurs dizaines de
-points de rappel selon la famille et le budget, alors qu'aucune perte n'est discernable sur les familles qu'il a
-vues ; mais il reste bien au-dessus de tout modèle qui n'a jamais vu d'attaque, y compris sur les
+points de rappel selon la famille et le budget ; sur les familles qu'il a vues, les écarts appariés
+sont de quelques points et de signe variable, à l'exception de Worms à 0,01 % (+50,0 points sur 24
+lignes) ; mais il reste bien au-dessus de tout modèle qui n'a jamais vu d'attaque, y compris sur les
 familles inédites (80,3 % [73,8 ; 87,3] pour Exploits et Reconnaissance dans C à 0,1 %, contre 0,4 %
 et 1,8 % pour les autoencodeurs).
 
@@ -551,7 +600,8 @@ et 1,8 % pour les autoencodeurs).
 - **Variabilité d'entraînement non mesurée.** Une seule exécution par condition, un seul tirage de B ;
   XGBoost est déterministe à données fixées et les autoencodeurs ont une graine fixée. **Les petits
   écarts ne sont donc pas interprétables** : ce document n'interprète que des écarts de plusieurs
-  dizaines de points (B − C sur Reconnaissance, sur Exploits à 0,01 %). Les intervalles couvrent
+  dizaines de points (B − C sur Reconnaissance, sur Exploits et sur Worms à 0,01 %, ce dernier sur 24
+  lignes). Les intervalles couvrent
   l'échantillonnage du test, pas l'entraînement.
 - **Le sens du temps est inversé** : entraînement sur le 18 février, test sur les 22 et 23 janvier.
   Ce n'est pas un déploiement réel (entraîner sur le passé, évaluer sur le futur) ; le choix vient du
@@ -559,7 +609,15 @@ et 1,8 % pour les autoencodeurs).
 - **La calibration ne se transfère pas d'un jour à l'autre** : le budget visé est une cible, non une
   garantie ; le taux observé décide du déploiement (§5).
 - **Les rappels des petites familles** (Analysis, Backdoors, Shellcode, Worms) ont des intervalles par
-  blocs qui couvrent presque [0 ; 100] et ne sont pas interprétables.
+  blocs larges et ne sont pas interprétables individuellement ; un écart **apparié** peut l'être quand
+  les deux conditions se trompent sur les mêmes lignes (Worms, tableau 11), mais il repose alors sur
+  quelques flux (12 Worms séparent B de C).
+- **Toutes les attaques du test tombent dans 12 blocs de 10 minutes sur 76** (les mêmes pour chaque
+  famille, sauf Analysis, 5, et Backdoors, 11) : le rééchantillonnage par blocs repose, pour les
+  attaques, sur 12 unités indépendantes, ce qui reste peu ; les intervalles par blocs sont plus honnêtes
+  que ceux de Wilson, pas exacts.
+- **Plusieurs comparaisons** : 18 écarts B − C par famille sont rapportés sans TTL (neuf familles, aux
+  deux budgets stricts) ; aucune correction de multiplicité n'est appliquée.
 - **Un seul découpage, une seule grille d'hyperparamètres** (quatre configurations, réglées sur C),
   des autoencodeurs à deux tailles seulement ; le lien entre fidélité de reconstruction et effondrement de
   la calibration repose sur trois modèles.
@@ -625,6 +683,8 @@ venv/bin/python src/models/autoencoder.py --config config_sans_ttl.toml
 # 4. Intervalles par blocs de temps et tables de ce document
 for c in config.toml config_sans_ttl.toml; do
   venv/bin/python src/paired_bootstrap.py --config $c
+  venv/bin/python src/paired_bootstrap.py --config $c --block-minutes 10 --output paired_bootstrap_controles.json \
+    --families Reconnaissance Exploits Worms Shellcode Analysis Backdoors DoS Fuzzers Generic "sept autres familles"
   venv/bin/python src/block_ci.py --config $c
 done
 venv/bin/python src/compare_ablation.py

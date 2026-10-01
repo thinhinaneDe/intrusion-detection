@@ -15,6 +15,9 @@ VENV    := venv
 PY      := $(VENV)/bin/python
 AVEC    := config.toml
 SANS    := config_sans_ttl.toml
+# Écarts appariés sur les familles non retirées de C (M31) : mêmes tirages, fichier séparé.
+CONTROLES := --block-minutes 10 --output paired_bootstrap_controles.json \
+             --families Reconnaissance Exploits Worms Shellcode Analysis Backdoors DoS Fuzzers Generic "sept autres familles"
 
 .PHONY: all venv check-data prepare models-ttl prepare-sans-ttl models-sans-ttl intervals tables notebook
 
@@ -53,6 +56,7 @@ models-sans-ttl:
 intervals:
 	for c in $(AVEC) $(SANS); do \
 	  $(PY) src/paired_bootstrap.py --config $$c && \
+	  $(PY) src/paired_bootstrap.py --config $$c $(CONTROLES) && \
 	  $(PY) src/block_ci.py --config $$c || exit 1; \
 	done
 	$(PY) src/compare_ablation.py

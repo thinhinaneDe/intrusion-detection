@@ -2,7 +2,8 @@
 
 Aucun chiffre du README n'est recopié à la main : les tables viennent de
 `results/block_ci.json` (intervalles par blocs de temps, M27),
-`results/paired_bootstrap.json` (écarts appariés, M25) et des JSON des modèles, pour la
+`results/paired_bootstrap.json` (écarts appariés, M25), `results/paired_bootstrap_controles.json`
+(mêmes écarts sur les familles non retirées, M31) et des JSON des modèles, pour la
 version SANS TTL (résultat principal) et la version AVEC TTL (mesure du raccourci).
 
 Usage : python src/report_tables.py [--sans config_sans_ttl.toml] [--avec config.toml]
@@ -147,6 +148,20 @@ def main() -> None:
                              f"{100 * rec['recall_twin']:.1f} (n = {rec['n_twin']})" if rec["n_twin"] else f"n = 0",
                              f"{100 * rec['recall_no_twin']:.1f} (n = {rec['n_no_twin']})"])
     print(table(["Condition", "Budget", "Seuil", "Tous", "Avec jumeau", "Sans jumeau"], rows))
+
+    print("\n### T12 — Sans TTL : écarts appariés B − C et A − B sur les sept familles NON retirées et leur groupe "
+          "(rappel lu au même taux, points, IC par blocs apparié ; * : l'intervalle exclut zéro)\n")
+    ctl = json.loads((dirs["sans"] / "results" / "paired_bootstrap_controles.json").read_text())["10"]["rows"]
+    gap = lambda e: (f"{e['point']:+.1f} [{e['lo']:+.1f} ; {e['hi']:+.1f}]"  # noqa: E731
+                     + (" *" if e["lo"] > 0 or e["hi"] < 0 else ""))
+    rows = []
+    for fam in [f for f in FAMILIES if f not in ("Exploits", "Reconnaissance")] + [G_OTHERS]:
+        for b in ("0.001", "0.0001"):
+            e = ctl[f"lu|toutes les lignes|{b}|{fam}"]
+            r = e["recall"]
+            rows.append([f"{fam} ({FAMILY_N[fam]})" if fam in FAMILY_N else f"**{fam}**", bl(b),
+                         f"{r['A']:.1f} / {r['B']:.1f} / {r['C']:.1f}", gap(e["A − B"]), gap(e["B − C"])])
+    print(table(["Famille (n test)", "Budget", "Rappel A / B / C", "A − B", "B − C"], rows))
 
     print("\n### T11 — Sans TTL : Reconnaissance, écart B − C lu au même taux, sans jumeau dans A, B ni C "
           "(points, IC par blocs apparié)\n")

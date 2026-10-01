@@ -18,6 +18,8 @@ contamination (M11) ne joue pas.
 
 Usage : python src/paired_bootstrap.py [--config config.toml] [--n-boot 1000]
                                        [--block-minutes 10 5 0] [--families Exploits Reconnaissance]
+                                       [--output paired_bootstrap.json]
+Une famille nommée « sept autres familles » désigne le groupe des familles non retirées de C.
 """
 
 import argparse
@@ -31,6 +33,7 @@ from evaluate import twin_flags
 from prepare import load_config
 
 CONDITIONS = ["A", "B", "C"]
+GROUP_OTHERS = "sept autres familles"  # attaques des familles non retirées de C, même définition que block_ci.py
 COMPARISONS = {"A − B": ("A", "B"), "B − C": ("B", "C")}
 
 
@@ -67,7 +70,9 @@ def run(cfg: dict, out: Path, families: list[str], n_boot: int, block_minutes: i
     normal = np.flatnonzero(label == 0)
     order = {c: np.argsort(scores[c][normal], kind="stable") for c in CONDITIONS}
     sorted_scores = {c: scores[c][normal][order[c]] for c in CONDITIONS}
-    att = {f: np.flatnonzero((family == f) & (label == 1)) for f in families}
+    removed = cfg["families"]["removed"]
+    att = {f: np.flatnonzero((~np.isin(family, removed) if f == GROUP_OTHERS else family == f) & (label == 1))
+           for f in families}
     cal_hit = {(c, b, f): scores[c][att[f]] > cal[c][b] for c in CONDITIONS for b in budgets for f in families}
     subsets = {"toutes les lignes": {f: np.ones(len(att[f]), bool) for f in families},
                "sans jumeau": {f: no_twin[att[f]] for f in families}}
@@ -96,13 +101,15 @@ def run(cfg: dict, out: Path, families: list[str], n_boot: int, block_minutes: i
     result = {"block_minutes": block_minutes, "n_blocks": n_blocks, "n_boot": n_boot,
               "blocks_with_family": {f: int(len(np.unique(block_id[att[f]]))) for f in families},
               "rows": {}}
-    for kind, sub, b, f in {(k[0], k[1], k[2], k[3]) for k in keys}:
+    for kind, sub, b, f in sorted({(k[0], k[1], k[2], k[3]) for k in keys}):  # trié : sortie identique d'une exécution à l'autre
         entry = {}
         for name, (x, y) in COMPARISONS.items():
             d = 100 * (samples[(kind, sub, b, f, x)] - samples[(kind, sub, b, f, y)])
             lo, hi = np.nanpercentile(d[1:], [2.5, 97.5])
             entry[name] = {"point": float(d[0]), "lo": float(lo), "hi": float(hi)}
         entry["recall"] = {c: float(100 * samples[(kind, sub, b, f, c)][0]) for c in CONDITIONS}
+        # Réplications sans aucune ligne de la famille : rappel non défini, ignorées par nanpercentile.
+        entry["n_undefined"] = int(np.isnan(samples[(kind, sub, b, f, "B")][1:]).sum())
         result["rows"][f"{kind}|{sub}|{b}|{f}"] = entry
     return result
 
@@ -115,6 +122,8 @@ def main() -> None:
                         help="Taille des blocs de temps ; 0 = lignes une à une. La première est la variante principale")
     parser.add_argument("--families", nargs="+", default=["Reconnaissance", "Exploits"])
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--output", default="paired_bootstrap.json",
+                        help="Nom du fichier écrit dans results/ (les tirages ne dépendent pas des familles)")
     args = parser.parse_args()
     cfg = load_config(args.config)
     out = Path(cfg["data"]["processed_dir"])
@@ -136,12 +145,12 @@ def main() -> None:
                         e = results[m]["rows"][f"{kind}|{sub}|{b}|{f}"]
                         rec = e["recall"]
                         print(f"  budget {100 * float(b):g} % : A {rec['A']:6.2f}  B {rec['B']:6.2f}  "
-                              f"C {rec['C']:6.2f} ; " + " ; ".join(
+                              f"C {rec['C']:6.2f} ; réplications sans la famille {e['n_undefined']} ; " + " ; ".join(
                                   f"{name} {e[name]['point']:+7.2f} [{e[name]['lo']:+7.2f} ; "
                                   f"{e[name]['hi']:+7.2f}]" for name in COMPARISONS))
     (out / "results").mkdir(exist_ok=True)
-    (out / "results" / "paired_bootstrap.json").write_text(json.dumps(results, indent=2))
-    print(f"\nRésultats écrits dans {out / 'results' / 'paired_bootstrap.json'}")
+    (out / "results" / args.output).write_text(json.dumps(results, indent=2))
+    print(f"\nRésultats écrits dans {out / 'results' / args.output}")
 
 
 if __name__ == "__main__":

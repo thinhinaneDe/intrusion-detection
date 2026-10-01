@@ -2555,3 +2555,114 @@ présents et intègres », 4,6 s) :
 vérifié : il documente le jeu mais aucun script ne le lit. Contrôle du message d'erreur : sur un
 dossier ne contenant que deux des six fichiers, dont un modifié d'un octet, le script signale 4
 absents et 1 différent, rappelle la page officielle et les noms attendus, et sort avec le code 1.
+
+---
+
+## M31 — Écarts appariés B − C sur les familles non retirées : Worms, et correction de M28 (2026-10-01)
+
+Origine : la figure 4 du notebook montre, sans TTL à 0,01 %, Worms à A 62,5 %, B 66,7 %, C 16,7 %,
+alors que Worms n'est pas retirée de C. Question : l'affirmation « sur les sept autres familles, A, B
+et C sont indiscernables » (M28, README) tient-elle sur les écarts **appariés** ? Même méthode que
+pour Exploits et Reconnaissance (M25, M26) : rappel lu au même taux, blocs de 10 minutes, 1 000
+réplications, graine 42, IC à 95 %, apparié.
+
+Commandes :
+
+    for c in config_sans_ttl.toml config.toml; do
+      venv/bin/python src/paired_bootstrap.py --config $c --block-minutes 10 \
+        --output paired_bootstrap_controles.json \
+        --families Reconnaissance Exploits Worms Shellcode Analysis Backdoors DoS Fuzzers Generic "sept autres familles"
+    done
+    venv/bin/python src/report_tables.py
+
+Modifications de `paired_bootstrap.py`, sans effet sur les résultats existants : option `--output`
+(pour ne pas écraser `paired_bootstrap.json`), groupe « sept autres familles » (même définition que
+`block_ci.py`), compte des réplications où la famille est absente, et tri des clés de sortie.
+**Contrôles** : les tirages ne dépendent pas de la liste des familles (un tirage de blocs par
+réplication) ; les 24 lignes d'Exploits et de Reconnaissance du fichier existant sont identiques
+valeur pour valeur dans les deux versions. Sans le tri, l'ordre des clés du JSON changeait d'une
+exécution à l'autre (itération sur un ensemble de chaînes, `PYTHONHASHSEED`), valeurs identiques ;
+avec le tri, deux exécutions sous `PYTHONHASHSEED=1` et `2` donnent des fichiers identiques octet pour
+octet.
+
+### Blocs temporels contenant des Worms au test
+
+**12 blocs de 10 minutes sur 76.** Répartition des 24 lignes de Worms par bloc (numéro de bloc :
+lignes) : 0 : 3, 1 : 1, 2 : 2, 3 : 2, 4 : 1, 5 : 6, 6 : 2, 7 : 3, 8 : 1, 9 : 1, 10 : 1, 11 : 1.
+Aucune des 1 000 réplications n'est sans Worms (rappel toujours défini).
+
+**Constat plus général** : toutes les attaques du test tombent dans **les mêmes 12 blocs** (blocs
+contenant au moins une attaque : 12 sur 76). Reconnaissance, Exploits, Worms, Shellcode, DoS, Fuzzers
+et Generic occupent chacune ces 12 blocs ; Analysis 5, Backdoors 11. Le rééchantillonnage par blocs
+repose donc, pour les attaques, sur 12 unités : c'est peu, et la remarque de M25 (« Reconnaissance et
+Exploits tombent chacun dans 12 blocs ») vaut pour toutes les familles.
+
+**Concentration des Worms qui séparent B de C** (sans TTL, 0,01 %, seuil lu au même taux sur le
+test) : B détecte 16 Worms, C 4 ; les 12 détectés par B et manqués par C se répartissent sur 8 blocs
+(0 : 2, 1 : 1, 2 : 1, 3 : 1, 4 : 1, 5 : 3, 6 : 2, 7 : 1) ; aucun Worms n'est détecté par C et manqué
+par B. Aucune ligne de test de Worms n'a de jumeau dans A, B ou C (variante « sans jumeau »
+identique).
+
+### Exemples d'entraînement par famille (jeux sans TTL)
+
+| Famille | A | B | C | C / B |
+|---|---|---|---|---|
+| Analysis | 1 883 | 1 107 | 1 883 | 1,70 |
+| Backdoors | 1 684 | 990 | 1 684 | 1,70 |
+| DoS | 4 840 | 2 846 | 4 840 | 1,70 |
+| Fuzzers | 17 804 | 10 468 | 17 804 | 1,70 |
+| Generic | 22 545 | 13 256 | 22 545 | 1,70 |
+| Shellcode | 1 288 | 757 | 1 288 | 1,70 |
+| Worms | 147 | 86 | 147 | 1,71 |
+
+C garde toutes les attaques non retirées, B en tire 50 191 parmi les neuf familles : **sur les sept
+autres familles, C a vu 1,70 fois plus d'exemples que B.** B − C y mêle l'absence d'Exploits et de
+Reconnaissance et ce surcroît d'exemples ; ce n'est pas un témoin pur.
+
+### Écarts appariés B − C, rappel lu au même taux (points, [IC par blocs apparié])
+
+Sans TTL (* : l'intervalle exclut zéro) :
+
+| Famille | 0,1 % | 0,01 % |
+|---|---|---|
+| Analysis | +0,0 [+0,0 ; +0,0] | −0,7 [−1,5 ; +40,0] |
+| Backdoors | −0,3 [−10,2 ; +3,5] | +3,0 [−1,5 ; +30,9] |
+| DoS | +1,1 [−1,5 ; +3,9] | **+11,2 [+2,8 ; +22,6]** * |
+| Fuzzers | **−11,7 [−21,9 ; −4,0]** * | +0,8 [−1,0 ; +2,2] |
+| Generic | −0,4 [−1,0 ; +0,4] | +1,6 [−0,7 ; +3,1] |
+| Shellcode | **−10,3 [−14,6 ; −3,8]** * | +3,6 [−10,6 ; +12,4] |
+| Worms | −4,2 [−17,6 ; +0,0] | **+50,0 [+21,4 ; +62,5]** * |
+| sept autres familles (groupe) | **−5,8 [−11,6 ; −1,5]** * | **+2,3 [+0,01 ; +3,8]** * |
+
+Avec TTL : Worms +0,0 [−7,4 ; +0,0] (0,1 %) et −4,2 [−23,1 ; +9,4] (0,01 %) ; Shellcode −2,7
+[−13,9 ; +2,2] et +3,1 [−12,8 ; +9,8] ; DoS −0,4 [−3,1 ; +1,7] et +1,3 [−4,2 ; +5,9] ; Fuzzers −19,7
+[−32,4 ; −8,7] * et −5,2 [−11,5 ; −0,7] * ; groupe −9,1 [−14,6 ; −3,9] * et −2,3 [−6,6 ; −0,0] *.
+
+### Lecture
+
+- **Worms, sans TTL, 0,01 % : B − C +50,0 points [+21,4 ; +62,5], l'intervalle apparié exclut
+  zéro.** La lecture de la figure (intervalles non appariés disjoints) est confirmée par l'écart
+  apparié. C a pourtant vu 1,71 fois plus de Worms que B : **retirer Exploits et Reconnaissance a
+  dégradé la détection d'une troisième famille**, présente à l'entraînement. DoS suit le même sens à
+  0,01 % (+11,2 [+2,8 ; +22,6]). Le mécanisme n'est pas établi ; hypothèse non vérifiée : une
+  proximité de comportement entre Worms et Exploits dans ces données.
+- **À 0,1 %, C fait mieux que B** sur Fuzzers, Shellcode et le groupe des sept : sens attendu du
+  surcroît d'exemples.
+- **Avec TTL, l'écart sur Worms disparaît** (−4,2 [−23,1 ; +9,4]) : la signature TTL, commune à 98 %
+  des attaques (M24), porte la détection de Worms indépendamment des familles vues.
+- **Réserves** : 24 lignes de Worms (un flux vaut 4,2 points ; 12 flux séparent B de C), 12 blocs
+  porteurs d'attaques, une seule exécution d'entraînement par condition (M27), et 4 des 14 écarts
+  B − C sans TTL sur ces sept familles excluent zéro, sans correction de multiplicité (un intervalle à
+  95 % exclut zéro à tort une fois sur vingt en l'absence d'effet). L'écart sur Worms est le seul dont
+  l'ordre de grandeur rejoint celui des familles retirées (+28,3 et +75,9 à 0,01 %).
+
+### Corrections
+
+- **M28 : « sur les sept autres familles, A, B et C sont indiscernables » et « la perte est
+  spécifique aux familles retirées » sont retirés.** Ils reposaient sur des intervalles non appariés
+  du groupe (qui se recouvrent). Sur les écarts appariés, le groupe des sept montre des écarts de
+  quelques points de signe variable (−5,8 à 0,1 %, +2,3 à 0,01 %), et Worms une perte de 50 points à
+  0,01 %. Formulation retenue dans le README : la perte est massive sur les familles retirées, de
+  quelques points et de signe variable sur les sept autres, **sauf Worms à 0,01 %**.
+- **README §6, « les rappels des petites familles ne sont pas interprétables »** : vrai des rappels
+  marginaux ; un écart apparié peut l'être (Worms), mais il repose sur quelques flux.
